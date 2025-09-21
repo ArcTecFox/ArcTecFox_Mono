@@ -207,40 +207,27 @@ CREATE POLICY "good" ON table USING (created_by = auth.uid());
 
 ## PDF Text Extraction Enhancement
 
-### Unified Text Processing Implementation
+### Implemented Solution
 1. **Frontend Text Extraction**:
    - `fileTextExtractor.js` utility handles PDF, text, and image files
    - Uses PDF.js for proper client-side PDF text extraction
    - Environment-aware error handling for development vs production
    - Text truncation to 20KB for API efficiency
 
-2. **Database Storage Optimization**:
-   - Added `extracted_text` column to `loaded_manuals` table
-   - `uploadManualForAsset()` function stores extracted text during upload
-   - Child asset PM generation sources text from database instead of re-processing files
-   - Backend updated to read stored `extracted_text` before falling back to file processing
+2. **Database Storage**:
+   - `extracted_text` column in `loaded_manuals` table stores manual content
+   - `uploadManualForAsset()` function stores extracted text during parent asset upload
+   - Child asset PM generation sources text from database, eliminating duplicate processing
 
 3. **Backend Integration**:
-   - Modified main.py lines 290-333 and 346-370 to use stored text
-   - Child asset prompts now source manual text from `loaded_manuals.extracted_text`
-   - Eliminates duplicate PDF processing between parent and child asset workflows
+   - Child assets inherit parent's manual text from `loaded_manuals.extracted_text`
+   - Fallback to file processing if stored text not available
+   - Clean separation: Parent stores manual → Child inherits manual
 
-### Current Issues - RLS Policies
-- **Storage bucket access**: Users cannot list/access `user-manuals` bucket
-- **Database insert failures**: `loaded_manuals` table RLS blocking authenticated users
-- **File upload errors**: Missing storage policies for `storage.objects` table
-
-**Required RLS Policies to Fix**:
-```sql
--- For loaded_manuals table
-CREATE POLICY "Users can manage manuals for their site" ON loaded_manuals...
-
--- For storage.objects table
-CREATE POLICY "Users can upload manuals for their sites" ON storage.objects...
-CREATE POLICY "Users can read manuals for their sites" ON storage.objects...
-```
-
-**Status**: Child asset workflow ready to use stored text once RLS policies are resolved.
+### PDF Export Enhancement
+- Added "Time to complete: ___ Hours ___ Minutes" field to maintenance task PDFs
+- Located only in Technician column of signature section (not Supervisor)
+- Maintains professional formatting and table structure
 
 ## SEO Implementation Pattern - Dynamic Canonical Tags
 
