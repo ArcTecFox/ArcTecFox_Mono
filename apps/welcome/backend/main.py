@@ -287,63 +287,53 @@ async def generate_ai_plan(
         if not plan_data.name or not plan_data.category:
             raise HTTPException(status_code=400, detail="Missing required fields: name and category")
 
-        # Extract file content if user manual is provided
-        user_manual_content = ""
-        if plan_data.userManual:
-            logger.info(f"📄 Processing user manual: {plan_data.userManual.fileName}")
-            user_manual_content = await file_processor.extract_text_from_file(
-                plan_data.userManual.filePath, 
-                plan_data.userManual.fileType
-            )
-            if user_manual_content:
-                # Log manual details for debugging
-                manual_lines = user_manual_content.split('\n')
-                first_10_lines = '\n'.join(manual_lines[:10])
-                
-                logger.info(f"📚 Manual Content Detected for Child Asset PM Plan!")
-                logger.info(f"📚 Manual filename: {plan_data.userManual.fileName}")
-                logger.info(f"📚 Manual length: {len(user_manual_content)} characters")
-                logger.info(f"📚 Manual has {len(manual_lines)} lines")
-                logger.info(f"📚 First 10 lines of manual:\n{first_10_lines}")
-            else:
-                logger.warning("⚠️ Failed to extract content from user manual")
-        else:
-            logger.info("📚 No manual content provided for this child asset PM plan")
-
-        # Fetch parent asset manual if parent_asset_id is provided
-        parent_manual_content = ""
+        # Child assets inherit their parent's manual - fetch parent manual content
+        manual_content = ""
         if plan_data.parent_asset_id:
-            logger.info(f"🔍 Looking for parent asset manual with parent_asset_id: {plan_data.parent_asset_id}")
+            logger.info(f"🔍 Child asset PM generation - fetching parent manual for parent_asset_id: {plan_data.parent_asset_id}")
             try:
-                # Use service client - this bypasses RLS and should work
+                from database import get_service_supabase_client
                 service_client = get_service_supabase_client()
-                
-                # Query loaded_manuals for parent asset manual  
-                parent_manual_response = service_client.table('loaded_manuals').select('file_path,file_type,original_name').eq('parent_asset_id', plan_data.parent_asset_id).limit(1).execute()
-                
-                logger.info(f"📚 Query response data: {parent_manual_response.data}")
-                logger.info(f"📚 Query response count: {len(parent_manual_response.data) if parent_manual_response.data else 0}")
-                
+
+                # Query loaded_manuals for parent asset manual - include extracted_text
+                parent_manual_response = service_client.table('loaded_manuals').select('file_path,file_type,original_name,extracted_text').eq('parent_asset_id', plan_data.parent_asset_id).limit(1).execute()
+
+                logger.info(f"📚 Parent manual query response count: {len(parent_manual_response.data) if parent_manual_response.data else 0}")
+
                 if parent_manual_response.data and len(parent_manual_response.data) > 0:
                     parent_manual = parent_manual_response.data[0]
                     logger.info(f"📚 Found parent asset manual: {parent_manual['original_name']}")
-                    
-                    logger.info(f"📚 Attempting to extract from file_path: {parent_manual['file_path']}")
-                    logger.info(f"📚 File type: {parent_manual['file_type']}")
-                    
-                    parent_manual_content = await file_processor.extract_text_from_file(
-                        parent_manual['file_path'],
-                        parent_manual['file_type']
-                    )
-                    
-                    if parent_manual_content:
-                        logger.info(f"📚 Successfully extracted parent manual content: {len(parent_manual_content)} characters")
+
+                    # Try to use stored extracted text first (preferred method)
+                    if parent_manual.get('extracted_text'):
+                        manual_content = parent_manual['extracted_text']
+                        logger.info(f"📚 Using stored extracted text from database: {len(manual_content)} characters")
+
+                        # Log sample content for debugging
+                        manual_lines = manual_content.split('\n')
+                        first_10_lines = '\n'.join(manual_lines[:10])
+                        logger.info(f"📚 Manual has {len(manual_lines)} lines")
+                        logger.info(f"📚 First 10 lines of manual:\n{first_10_lines}")
+                    else:
+                        # Fallback to file processing if no stored text
+                        logger.info(f"📚 No stored text found, extracting from file_path: {parent_manual['file_path']}")
+                        logger.info(f"📚 File type: {parent_manual['file_type']}")
+
+                        manual_content = await file_processor.extract_text_from_file(
+                            parent_manual['file_path'],
+                            parent_manual['file_type']
+                        )
+
+                        if manual_content:
+                            logger.info(f"📚 Successfully extracted parent manual content from file: {len(manual_content)} characters")
+                        else:
+                            logger.warning("⚠️ Failed to extract content from parent manual file")
                 else:
-                    logger.info(f"📚 No parent manual found in database for parent_asset_id: {plan_data.parent_asset_id}")
+                    logger.warning(f"📚 No parent manual found in database for parent_asset_id: {plan_data.parent_asset_id}")
             except Exception as e:
                 logger.error(f"⚠️ Error fetching parent manual: {e}")
         else:
-            logger.info("📚 No parent_asset_id provided, skipping parent manual fetch")
+            logger.warning("📚 No parent_asset_id provided - child assets should always have a parent_asset_id")
 
         prompt = f"""
 Generate a detailed preventive maintenance (PM) plan for the following asset:
@@ -359,16 +349,12 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 
 {f'''
 **USER MANUAL CONTENT:**
-{f"CHILD ASSET MANUAL:" if user_manual_content and parent_manual_content else ""}
-{user_manual_content if user_manual_content else ""}
-
-{f"PARENT ASSET MANUAL:" if parent_manual_content else ""}
-{parent_manual_content if parent_manual_content else ""}
+{manual_content}
 
 **END OF USER MANUAL CONTENT**
 
-Use the information from the manual(s) above to determine recommended maintenance tasks and intervals. If specific maintenance procedures are mentioned in the manual, follow those recommendations. If the manual is not available or doesn't contain specific maintenance information, infer recommendations from best practices for similar assets in the same category.
-''' if (user_manual_content or parent_manual_content) else '''
+Use the information from the manual above to determine recommended maintenance tasks and intervals. If specific maintenance procedures are mentioned in the manual, follow those recommendations. If the manual is not available or doesn't contain specific maintenance information, infer recommendations from best practices for similar assets in the same category.
+''' if manual_content else '''
 Use the manufacturer's user manual to determine recommended maintenance tasks and intervals. If the manual is not available, infer recommendations from best practices for similar assets in the same category.
 '''}
 

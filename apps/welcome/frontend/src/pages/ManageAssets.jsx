@@ -28,6 +28,7 @@ import PMPlanManager from '../components/assets/PMPlanManager';
 import { LoadingModal, SuggestionsLoadingModal, ConfirmModal } from '../components/assets/AssetModals';
 import ParentPlanLoadingModal from '../components/assets/ParentPlanLoadingModal';
 import AssetDetailsModal from '../components/assets/AssetDetailsModal';
+import { extractTextFromFile, truncateTextForAPI } from '../utils/fileTextExtractor';
 
 const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propUserSites }) => {
   console.log('🏭 [MANAGE ASSETS] Component rendering - props changed?', {
@@ -454,8 +455,13 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
   const uploadManualForAsset = async (file, assetName, assetId, isParent = true, isModal = false, isEditModal = false) => {
     if (!file || !user) return null;
-    
+
     try {
+      // Extract text content from the file (new unified approach)
+      console.log(`📄 Extracting text from ${file.type} file: ${file.name}`);
+      const extractedText = await extractTextFromFile(file);
+      const truncatedText = truncateTextForAPI(extractedText, 20000);
+      console.log(`📄 Extracted ${extractedText.length} chars, truncated to ${truncatedText.length} chars`);
       if (isModal) {
         setUploadingModalFile(true);
       } else if (isEditModal) {
@@ -481,14 +487,15 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       const result = await storageService.uploadUserManual(file, assetName, user.id, siteId);
       
       if (result.success) {
-        // Save file metadata to loaded_manuals table
+        // Save file metadata and extracted text to loaded_manuals table
         const manualData = {
           [isParent ? 'parent_asset_id' : 'child_asset_id']: assetId,
           file_path: result.filePath,
           file_name: result.fileName,
           original_name: result.originalName,
           file_size: result.fileSize.toString(),
-          file_type: result.fileType
+          file_type: result.fileType,
+          extracted_text: truncatedText || null // Store the extracted text content
         };
         
         const { data, error } = await supabase
@@ -719,11 +726,17 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       setExtracting(true);
 
       try {
-        // Read file content for extraction
-        const fileContent = await readFileContent(parentManualFile);
+        // Extract readable text from file (handles PDFs, DOCs, etc.)
+        console.log(`🔍 Extracting text from ${parentManualFile.type} file: ${parentManualFile.name}`);
+        const extractedText = await extractTextFromFile(parentManualFile);
+
+        // Truncate content for API (20KB limit for better processing)
+        const truncatedContent = truncateTextForAPI(extractedText, 20000);
+
+        console.log(`🔍 Extracted text: ${extractedText.length} chars, sending: ${truncatedContent.length} chars`);
 
         // Call extraction API
-        const extractionResult = await extractAssetDetails(fileContent);
+        const extractionResult = await extractAssetDetails(truncatedContent);
 
         // Update states with extracted data
         setExtractedData(extractionResult.extracted || {});
@@ -747,15 +760,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
     }
   };
 
-  // Helper function to read file content
-  const readFileContent = async (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  };
 
   // Function to handle asset details confirmation
   const handleAssetDetailsConfirm = async () => {
