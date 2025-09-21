@@ -1,48 +1,44 @@
-import { Helmet } from 'react-helmet-async';
-import { useLocation } from 'react-router-dom';
+import { Helmet } from "react-helmet-async";
+import { useLocation } from "react-router-dom";
 
-/**
- * SEO Component for managing meta tags dynamically
- * @param {Object} props
- * @param {string} props.title - Page title (will be appended with site name)
- * @param {string} props.description - Page description
- * @param {boolean} props.noindex - Set to true for pages that shouldn't be indexed
- */
-const SEO = ({ 
-  title = 'AI Preventive Maintenance Plan Generator',
-  description = 'Generate preventive maintenance plans in minutes. ArcTecFox uses AI to produce task details, intervals, and schedules—delivered as a clean Excel (plus optional PDF). No sign-up required to try.',
-  noindex = false 
+const SEO = ({
+  title = "Free Preventive Maintenance Plan Generator | ArcTecFox",
+  description = "Generate a preventive maintenance plan in under 2 minutes with our free tool. CMMS-ready export to Excel/CSV. Built for asset-heavy teams.",
+  noindex = false,
+  image, // optional og:image
 }) => {
   const location = useLocation();
-  const baseUrl = 'https://arctecfox.ai';
-  const canonicalUrl = `${baseUrl}${location.pathname}`;
-  
-  // Format title with site name
-  const fullTitle = title === 'ArcTecFox' ? title : `${title} | ArcTecFox`;
-  
+
+  // In prod, set VITE_SITE_URL=https://arctecfox.ai
+  const runtimeOrigin =
+    (typeof window !== "undefined" && window.location && window.location.origin) ||
+    "https://arctecfox.ai";
+  const baseUrl = import.meta?.env?.VITE_SITE_URL || runtimeOrigin;
+
+  const path = location?.pathname || "/";
+  const canonicalUrl = `${baseUrl}${path}`;
+  const fullTitle = title.includes("ArcTecFox") ? title : `${title} | ArcTecFox`;
+
   return (
     <Helmet>
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonicalUrl} />
-      
-      {/* Robots meta */}
-      {noindex ? (
-        <meta name="robots" content="noindex,nofollow" />
-      ) : (
-        <meta name="robots" content="index,follow" />
-      )}
-      
-      {/* Open Graph tags */}
+
+      <meta name="robots" content={noindex ? "noindex,nofollow" : "index,follow"} />
+
+      {/* Open Graph */}
       <meta property="og:title" content={fullTitle} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:type" content="website" />
-      
-      {/* Twitter Card tags */}
+      {image ? <meta property="og:image" content={image} /> : null}
+
+      {/* Twitter */}
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:card" content="summary_large_image" />
+      {image ? <meta name="twitter:image" content={image} /> : null}
     </Helmet>
   );
 };

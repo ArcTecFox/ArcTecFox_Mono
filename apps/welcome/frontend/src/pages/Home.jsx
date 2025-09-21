@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import LeadCaptureModal from "../components/LeadCaptureModal";
 import PMPlannerOpen from "../pages/PMPlannerOpen";
@@ -8,49 +8,44 @@ import { generatePMPlan } from "../api";
 import { saveLeadAndPlan } from "../services/leadFunnelService";
 import { exportPlanToExcel } from "../utils/exportPlan";
 import SEO from "../components/SEO";
+import { Helmet } from "react-helmet-async";
 
 export default function Home() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  
+
   const [showLeadModal, setShowLeadModal] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [completion, setCompletion] = useState(0);
   const [formState, setFormState] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect authenticated users to dashboard
   useEffect(() => {
-    if (!loading && user) {
-      console.log('🏠 [HOME] Authenticated user detected - redirecting to dashboard');
-      navigate('/dashboard', { replace: true });
-    }
+    if (!loading && user) navigate("/dashboard", { replace: true });
   }, [user, loading, navigate]);
 
-  // Don't render landing page if user is authenticated (prevents flash)
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4" />
           <p>Loading...</p>
         </div>
       </div>
     );
   }
-
   if (user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4" />
           <p>Redirecting to dashboard...</p>
         </div>
       </div>
     );
   }
 
-  const scrollToPlanner = () => {
+  const scrollToGenerator = () => {
     const el = document.getElementById("pm-planner-section");
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
@@ -58,7 +53,6 @@ export default function Home() {
   const handlePlannerProgress = (formData) => {
     setFormState(formData);
     setAssetName(formData?.name || "");
-
     const keys = [
       "name",
       "model",
@@ -73,7 +67,6 @@ export default function Home() {
       const v = formData?.[k];
       return v !== undefined && String(v).trim() !== "";
     }).length;
-
     setCompletion(Math.round((filled / keys.length) * 100));
   };
 
@@ -85,20 +78,13 @@ export default function Home() {
   const handleLeadSubmit = async ({ email, company }) => {
     try {
       setSubmitting(true);
-
-      // 1) Generate PM tasks
       const tasks = await generatePMPlan(formState);
-
-      // 2) Persist lead + plan + tasks
       const { plan } = await saveLeadAndPlan({
         form: formState,
         lead: { email, company },
         tasks,
       });
-
-      // 3) Auto-export to Excel for the user
       exportPlanToExcel({ plan, tasks });
-
       setShowLeadModal(false);
     } catch (err) {
       console.error("❌ Lead funnel save failed:", err);
@@ -110,132 +96,212 @@ export default function Home() {
 
   return (
     <>
-      <SEO 
-        title="ArcTecFox"
-        description="Generate preventive maintenance plans in minutes with AI. Create detailed PM tasks, intervals, and schedules. Export to Excel or PDF. No sign-up required to try."
+      <SEO
+        title="Free Preventive Maintenance Plan Generator | ArcTecFox"
+        description="ArcTecFox delivers structured, CMMS-ready preventive maintenance plans in under 2 minutes. Plan, Prevent, Perform — keep assets under management reliable and compliant."
       />
-      <div className="bg-gray-50 relative font-sans">
-        {/* --- HERO --- */}
-      <section className="bg-white py-16 text-center border-b">
-        <div className="max-w-4xl mx-auto px-4">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-6">
-            Failing to plan is planning to fail.
-          </h1>
-          <p className="text-lg text-gray-700 mb-8 max-w-3xl mx-auto leading-relaxed">
-            Before you can predict failure, you need a plan to prevent it.
-            ArcTecFox helps maintenance teams build fast, structured PMs — ready for action.
-          </p>
 
-          <div className="text-left max-w-2xl mx-auto">
-            <h3 className="text-xl font-semibold text-gray-800 mb-3">
-              Too many maintenance teams are stuck in firefighting mode:
-            </h3>
-            <ul className="space-y-2 text-gray-700 mb-8">
-              <li>❌ Assets fail unexpectedly, costing hours—or days—of downtime</li>
-              <li>❌ CMMS setups are incomplete, leaving gaps in coverage</li>
-              <li>❌ Old spreadsheets get copied, but don’t reflect real operating conditions</li>
-              <li>❌ Teams rely on “tribal knowledge” instead of structured PMs</li>
+      <div className="bg-gray-50 relative font-sans">
+        {/* HERO */}
+        <section className="bg-white py-16 text-center border-b">
+          <div className="max-w-5xl mx-auto px-4">
+            <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-6">
+              Failing to plan is planning to fail.
+            </h1>
+            <p className="text-lg text-gray-700 mb-8 max-w-3xl mx-auto leading-relaxed">
+              ArcTecFox provides the most effective preventive maintenance plans in the industry — prevent failure before it happens, optimize reliability, and scale maintenance with confidence.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={scrollToGenerator}
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
+              >
+                <span>⚡</span> Generate My Free PM Plan
+              </button>
+              <Link to="/faq" className="text-blue-600 font-semibold hover:underline">
+                See FAQs
+              </Link>
+            </div>
+            <p className="text-sm text-gray-600 mt-3">Plan, Prevent, Perform.</p>
+          </div>
+        </section>
+
+        {/* PAIN POINTS */}
+        <section className="py-12 text-center">
+          <div className="max-w-5xl mx-auto px-4">
+            <h2 className="text-2xl md:text-3xl font-bold mb-4">Why teams fall behind</h2>
+            <ul className="grid gap-3 text-left sm:grid-cols-3 text-gray-800">
+              <li className="bg-white p-4 rounded border">Incomplete CMMS setups create gaps in coverage.</li>
+              <li className="bg-white p-4 rounded border">Outdated spreadsheets ignore real operating conditions.</li>
+              <li className="bg-white p-4 rounded border">Unstructured work increases downtime and costs.</li>
             </ul>
           </div>
+        </section>
 
-          <button
-            onClick={scrollToPlanner}
-            className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
-          >
-            <span>⚡</span> Build My Free PM Plan
-          </button>
+        {/* SOLUTION */}
+        <section className="bg-white py-12 border-y">
+          <div className="max-w-5xl mx-auto px-4">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Continuous PM Optimization</h2>
+            <p className="text-gray-700 mb-6">
+              A preventive maintenance plan is not a one-time document. It’s a structured, evolving program aligned to your assets under management.
+            </p>
+            <div className="grid sm:grid-cols-3 gap-6 text-left">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Quarterly reviews</h3>
+                <p className="text-gray-700">Refine tasks and intervals based on reliability performance and compliance.</p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Lifecycle updates</h3>
+                <p className="text-gray-700">Revise plans as assets are installed, upgraded, or decommissioned.</p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Data-driven revisions</h3>
+                <p className="text-gray-700">Leverage standards, field data, and technician feedback to stay effective.</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
-          <p className="text-sm text-gray-600 mt-3">
-            Predictive maintenance is powerful — but useless without a preventive foundation.
-          </p>
-        </div>
-      </section>
+        {/* FAQ ABOVE GENERATOR */}
+        <section className="bg-gray-50 py-12 border-t">
+          <div className="max-w-5xl mx-auto px-4">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">Preventive Maintenance — FAQs</h2>
+            <div className="grid md:grid-cols-2 gap-8 text-left">
+              <div>
+                <h3 className="font-semibold text-gray-900">How do I create a plan?</h3>
+                <p className="text-gray-700 mb-4">Use the free generator on this page. Enter asset details and get a CMMS-ready plan in under 2 minutes.</p>
+                <h3 className="font-semibold text-gray-900">Is it free?</h3>
+                <p className="text-gray-700 mb-4">Yes. You can generate and download a plan for free here.</p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Can I export to my CMMS?</h3>
+                <p className="text-gray-700 mb-4">Yes. Export to Excel/CSV and import to your CMMS. Field mapping guidance included.</p>
+                <h3 className="font-semibold text-gray-900">Who is ArcTecFox for?</h3>
+                <p className="text-gray-700">Maintenance and reliability teams managing 50+ assets per site in regulated, asset-heavy industries.</p>
+              </div>
+            </div>
+            <div className="text-center mt-6">
+              <Link to="/faq" className="text-blue-600 font-semibold hover:underline">See the full FAQ →</Link>
+            </div>
+          </div>
+        </section>
 
-      {/* Positioning Section */}
-      <section className="my-16 text-center px-4">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">
-            Before You Predict Failure… Have a Plan to Prevent It
-          </h2>
-          <p className="max-w-2xl mx-auto text-lg mb-6 text-gray-700">
-            Everyone’s chasing the next AI sensor or failure prediction model.
-            But what’s the point of predicting failure if you don’t have a preventive plan to act on it?
-          </p>
-          <p className="max-w-2xl mx-auto text-lg mb-6 text-gray-700">
-            You can’t optimize what you haven’t planned for. ArcTecFox builds your baseline preventive
-            maintenance plan in less than 60 seconds — so you’re not putting the cart before the horse.
-          </p>
-          <ul className="max-w-md mx-auto text-left space-y-2 text-gray-800 mb-6">
-            <li>✅ Fast, structured PMs</li>
-            <li>✅ AI-generated using reliability engineering best practices</li>
-            <li>✅ Instantly usable in Excel, PDF, or your CMMS</li>
-          </ul>
-          <p className="font-semibold text-gray-900">
-            First plan. Then predict. Then optimize. <br className="hidden sm:block" />
-            Most skip step 1 — don’t be most.
-          </p>
-        </div>
-      </section>
+        {/* GENERATOR */}
+        <section id="pm-planner-section" className="max-w-5xl mx-auto px-4 py-16">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-6">Free Preventive Maintenance Plan Generator</h2>
+          <ProgressBar
+            progress={completion}
+            label={
+              assetName
+                ? `You’re close — finalize the structured plan for “${assetName}”.`
+                : `Answer a few fields to generate your structured baseline plan.`
+            }
+          />
+          <PMPlannerOpen onChange={handlePlannerProgress} onGenerate={handlePlannerSubmit} disabled={submitting} />
+        </section>
 
-      {/* Free Offer */}
-      <section className="bg-gray-100 py-14 text-center">
-        <div className="max-w-4xl mx-auto px-4">
-          <h2 className="text-3xl font-semibold text-gray-800 mb-4">
-            Try It Free—No Sign-Up Needed
-          </h2>
-        <p className="text-gray-700 mb-6 max-w-2xl mx-auto">
-            Enter your asset below and get a complete preventive maintenance plan instantly.
-          </p>
+        {/* FINAL CTA */}
+        <section className="bg-white py-10 border-t text-center">
+          <div className="max-w-5xl mx-auto px-4">
+            <h3 className="text-xl font-semibold mb-2">Plan, Prevent, Perform.</h3>
+            <p className="text-gray-700 mb-6">Start with a structured baseline. Keep it effective with Continuous PM Optimization.</p>
+            <button
+              onClick={scrollToGenerator}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
+            >
+              <span>⚡</span> Generate My Free PM Plan
+            </button>
+          </div>
+        </section>
 
-          <ul className="text-left max-w-xl mx-auto text-gray-700 mb-8 space-y-2">
-            <li>✔ Task details, intervals, and schedules</li>
-            <li>✔ Delivered as a clean Excel file (plus optional PDF)</li>
-            <li>✔ Based on proven standards + AI logic</li>
-            <li>✔ Ready to share or import into your CMMS</li>
-          </ul>
+        {/* Structured Data (JSON-LD via dangerouslySetInnerHTML to avoid Vite normalization) */}
+        <Helmet>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                mainEntity: [
+                  {
+                    "@type": "Question",
+                    name: "How do I create a preventive maintenance plan?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text:
+                        "Use the Free PM Plan Generator on the landing page. Enter asset type, usage hours, environment, and start date to receive a structured baseline with tasks, intervals, and schedule logic.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Is it free?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text:
+                        "Yes. You can generate and download a plan for free directly from the landing page.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Can I export the PM plan to my CMMS?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text:
+                        "Yes. Export to Excel/CSV and import into your CMMS. Field mapping guidance is provided.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "What is Continuous PM Optimization?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text:
+                        "ArcTecFox’s branded process to keep PM effective over time: quarterly reviews, lifecycle-aligned updates, and data-driven revisions.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Which assets are supported?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text:
+                        "HVAC, compressors, pumps, chillers, CNC, conveyors, motors, and custom entries for your assets under management.",
+                    },
+                  },
+                ],
+              }),
+            }}
+          />
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "HowTo",
+                name: "How to create a preventive maintenance plan",
+                step: [
+                  { "@type": "HowToStep", name: "Choose asset type", text: "Select the equipment (HVAC, compressor, CNC, chiller, etc.)." },
+                  { "@type": "HowToStep", name: "Enter usage & conditions", text: "Provide hours, environment, and criticality." },
+                  { "@type": "HowToStep", name: "Generate schedule", text: "Click “Generate My Free PM Plan” to create a CMMS-ready schedule." },
+                  { "@type": "HowToStep", name: "Export", text: "Download Excel/CSV and import into your CMMS." }
+                ],
+              }),
+            }}
+          />
+        </Helmet>
 
-          <p className="text-gray-600 mb-6">Takes less than 1 minute to complete.</p>
+        {showLeadModal && (
+          <LeadCaptureModal
+            submitting={submitting}
+            onClose={() => setShowLeadModal(false)}
+            onLeadSubmit={handleLeadSubmit}
+          />
+        )}
 
-          <button
-            onClick={scrollToPlanner}
-            className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
-          >
-            <span>👉</span> Start Planning in 60 Seconds
-          </button>
-
-          <p className="text-sm text-gray-600 mt-3">
-            Your preventive maintenance plan will be generated instantly and emailed to you.
-          </p>
-        </div>
-      </section>
-
-      {/* Planner + Progress */}
-      <section id="pm-planner-section" className="max-w-5xl mx-auto px-4 py-16">
-        <ProgressBar
-          progress={completion}
-          label={
-            assetName
-              ? `You almost have your preventive maintenance plan for "${assetName}"`
-              : `You’re close—answer a few fields to generate your plan`
-          }
-        />
-        <PMPlannerOpen
-          onChange={handlePlannerProgress}
-          onGenerate={handlePlannerSubmit}
-          disabled={submitting}
-        />
-      </section>
-
-      {showLeadModal && (
-        <LeadCaptureModal
-          submitting={submitting}
-          onClose={() => setShowLeadModal(false)}
-          onLeadSubmit={handleLeadSubmit}
-        />
-      )}
-
-      <footer className="mt-12 border-t py-6" />
-    </div>
+        <footer className="mt-12 border-t py-6 text-center text-sm text-gray-600">
+          © {new Date().getFullYear()} ArcTecFox. Plan, Prevent, Perform.
+        </footer>
+      </div>
     </>
   );
 }
