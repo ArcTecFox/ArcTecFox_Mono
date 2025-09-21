@@ -455,8 +455,13 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
   const uploadManualForAsset = async (file, assetName, assetId, isParent = true, isModal = false, isEditModal = false) => {
     if (!file || !user) return null;
-    
+
     try {
+      // Extract text content from the file (new unified approach)
+      console.log(`📄 Extracting text from ${file.type} file: ${file.name}`);
+      const extractedText = await extractTextFromFile(file);
+      const truncatedText = truncateTextForAPI(extractedText, 20000);
+      console.log(`📄 Extracted ${extractedText.length} chars, truncated to ${truncatedText.length} chars`);
       if (isModal) {
         setUploadingModalFile(true);
       } else if (isEditModal) {
@@ -482,14 +487,15 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       const result = await storageService.uploadUserManual(file, assetName, user.id, siteId);
       
       if (result.success) {
-        // Save file metadata to loaded_manuals table
+        // Save file metadata and extracted text to loaded_manuals table
         const manualData = {
           [isParent ? 'parent_asset_id' : 'child_asset_id']: assetId,
           file_path: result.filePath,
           file_name: result.fileName,
           original_name: result.originalName,
           file_size: result.fileSize.toString(),
-          file_type: result.fileType
+          file_type: result.fileType,
+          extracted_text: truncatedText || null // Store the extracted text content
         };
         
         const { data, error } = await supabase
