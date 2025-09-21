@@ -353,12 +353,26 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 
 **END OF USER MANUAL CONTENT**
 
-Use the information from the manual above to determine recommended maintenance tasks and intervals. If specific maintenance procedures are mentioned in the manual, follow those recommendations. If the manual is not available or doesn't contain specific maintenance information, infer recommendations from best practices for similar assets in the same category.
+CRITICAL RULE - Manual Text Usage:
+When manual_text is provided above:
+1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+3. Each maintenance task MUST incorporate the actual details found in the manual text
+4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+5. Include step-by-step procedures as found in the manual
+
+INCORRECT (NEVER do this):
+"Task: Change hydraulic filter - Refer to user manual for proper procedure"
+
+CORRECT (ALWAYS do this):
+"Task: Change hydraulic filter - Remove cover plate (4 bolts, 15mm), drain hydraulic fluid, remove filter element P/N HF-2341, inspect O-ring, install new filter with 25 ft-lbs torque (Section 4.3.2), refill with ISO 46 oil (15 liters)"
+
+Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
 ''' if manual_content else '''
 Use the manufacturer's user manual to determine recommended maintenance tasks and intervals. If the manual is not available, infer recommendations from best practices for similar assets in the same category.
 '''}
 
-Be as detailed as possible in the instructions and reference the user manual content when applicable.
+Be as detailed as possible in the instructions and include specific technical details from the manual content when available.
 
 **Usage Insights**  
 - Provide a concise write-up (in a field named "usage_insights") that analyzes this asset's current usage profile ({plan_data.hours or 0} hours and {plan_data.cycles or 0} cycles), noting the typical outages or failure modes that occur at this stage in the asset's life.
@@ -816,13 +830,25 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 Asset Name: {plan_data.name}
 Category: {plan_data.category}
 Model: {plan_data.model or 'Not specified'}
-Serial Number: {plan_data.serial or 'Not specified'}  
+Serial Number: {plan_data.serial or 'Not specified'}
 Operating Hours: {plan_data.hours or 'Not specified'}
 Environment: {plan_data.environment or 'Not specified'}
 Additional Context: {plan_data.additional_context or 'Not specified'}
 Plan Start Date: {plan_data.date_of_plan_start or 'Not specified'}
 
-{"User Manual Content:" + user_manual_content if user_manual_content else ""}
+{f'''User Manual Content:
+{user_manual_content}
+
+CRITICAL RULE - Manual Text Usage:
+When manual content is provided above:
+1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+3. Each maintenance task MUST incorporate the actual details found in the manual text
+4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+5. Include step-by-step procedures as found in the manual
+
+Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
+''' if user_manual_content else ""}
 
 Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
 1. Task name

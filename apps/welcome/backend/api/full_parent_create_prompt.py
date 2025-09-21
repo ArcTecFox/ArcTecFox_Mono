@@ -117,6 +117,13 @@ UNIVERSAL CONTEXT (inherits unless overridden at task-level)
 
 POLICIES (MANDATORY)
 - If User Manual Content is supplied above, treat it as the primary source. Extract concrete specs/steps/part numbers/brands and cite exact sections/pages in "citations".
+- CRITICAL RULE - Manual Text Usage: When User Manual Content is provided above:
+  1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+  2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+  3. Each maintenance task MUST incorporate the actual details found in the manual text
+  4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+  5. Include step-by-step procedures as found in the manual
+  6. Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
 - If no manual content, use recognized standards/suppliers (ISO/ASTM/API; SKF/Mobil/Shell). Cite them. Never write “refer to the manual.” Provide actual values/steps.
 - Do not include calendar dates anywhere; use numeric intervals in **weeks** only.
 
