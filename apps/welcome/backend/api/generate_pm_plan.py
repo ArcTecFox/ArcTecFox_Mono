@@ -80,6 +80,7 @@ POLICIES (MANDATORY)
 - Do not include calendar dates anywhere; use numeric intervals in **weeks** only.
 
 TASK TYPE RESTRICTIONS
+- For CHILD ASSETS specifically: Do NOT include any “monthly” visual inspections or cleaning tasks unless the OEM specifies them directly. If included, the citation must be explicit (manual page/section).
 - Exclude routine cleaning or visual-only inspections unless the OEM manual explicitly prescribes them or a standard/supplier requires them. If included, cite the exact source.
 - Otherwise, focus on technical, measurable tasks (lubrication, torque, calibration, functional checks, replacements, adjustments, monitoring, safety interlocks).
 
