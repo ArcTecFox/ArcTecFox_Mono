@@ -69,10 +69,6 @@ const PMPlanManager = React.memo(({
               <span className="font-medium text-gray-700">Plan Start:</span>
               <p className="text-gray-900">{formatDate(selectedChildAsset.plan_start_date) || 'N/A'}</p>
             </div>
-            <div>
-              <span className="font-medium text-gray-700">Operating Hours:</span>
-              <p className="text-gray-900">{selectedChildAsset.operating_hours || 'N/A'}</p>
-            </div>
           </div>
         </div>
 

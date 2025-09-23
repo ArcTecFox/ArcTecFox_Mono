@@ -53,6 +53,7 @@ from api.pm_plan_notification import router as pm_plan_notification_router
 from api.send_invitation import InvitationRequest, send_invitation_email
 from api.send_test_invitation import TestInvitationRequest, send_test_invitation_email
 from api.add_existing_user import AddExistingUserRequest, AddExistingUserResponse, add_existing_user_to_site
+from api.pm_routes import router as pm_routes_router
 
 # Load environment variables
 load_dotenv()
@@ -99,6 +100,7 @@ app.include_router(parent_plan_router, prefix="/api", tags=["parent-plans"])
 app.include_router(access_requests_router, prefix="/api", tags=["access-requests"])
 app.include_router(extract_details_router, prefix="/api", tags=["extraction"])
 app.include_router(pm_plan_notification_router, tags=["pm-notifications"])
+app.include_router(pm_routes_router, tags=["pm-plans"])
 
 # Environment-based CORS configuration with smart pattern matching
 cors_origins_env = os.getenv("CORS_ORIGIN", "https://arctecfox-mono.vercel.app")
@@ -289,6 +291,7 @@ async def generate_ai_plan(
 
         # Child assets inherit their parent's manual - fetch parent manual content
         manual_content = ""
+
         if plan_data.parent_asset_id:
             logger.info(f"🔍 Child asset PM generation - fetching parent manual for parent_asset_id: {plan_data.parent_asset_id}")
             try:
@@ -342,7 +345,7 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 - Model: {plan_data.model}
 - Serial Number: {plan_data.serial}
 - Asset Category: {plan_data.category}
-- Usage Hours: {plan_data.hours or 0} hours
+- Usage Hours: {calculated_hours} hours (calculated from parent asset operation)
 - Usage Cycles: {plan_data.cycles or 0} cycles
 - Environmental Conditions: {plan_data.environment}
 - Date of Plan Start: {plan_data.date_of_plan_start or datetime.now().strftime('%Y-%m-%d')}
@@ -374,7 +377,7 @@ Use the manufacturer's user manual to determine recommended maintenance tasks an
 
 Be as detailed as possible in the instructions and include specific technical details from the manual content when available.
 
-**Usage Insights**  
+**Usage Insights**
 - Provide a concise write-up (in a field named "usage_insights") that analyzes this asset's current usage profile ({plan_data.hours or 0} hours and {plan_data.cycles or 0} cycles), noting the typical outages or failure modes that occur at this stage in the asset's life.
 
 For each PM task:
