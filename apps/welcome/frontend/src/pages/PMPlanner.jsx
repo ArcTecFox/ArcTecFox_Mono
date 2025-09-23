@@ -1087,6 +1087,7 @@ export default function PMPlanner() {
         
         // Asset hierarchy information
         child_asset_id: selectedChildAsset?.id || null,
+        parent_asset_id: selectedParentAsset?.id || null,
         
         // Additional asset details that might be useful for PM planning
         purchase_date: activeAsset.purchase_date || '',
@@ -1128,7 +1129,6 @@ export default function PMPlanner() {
             purchase_date: selectedChildAsset.purchase_date,
             install_date: selectedChildAsset.install_date,
             notes: selectedChildAsset.notes,
-            operating_hours: selectedChildAsset.operating_hours,
             addtl_context: selectedChildAsset.addtl_context,
             plan_start_date: selectedChildAsset.plan_start_date,
             // Environment is inherited from parent

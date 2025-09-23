@@ -165,18 +165,6 @@ const AssetTable = React.memo(({
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Operating Hours
-                            </label>
-                            <input
-                              type="number"
-                              name="operating_hours"
-                              value={editingData.operating_hours || ''}
-                              onChange={onEditInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
                         </div>
                       )}
 
@@ -238,11 +226,13 @@ const AssetTable = React.memo(({
                         <Info label="Manufacturer" value={asset.manufacturer} />
                         <Info label="Model" value={asset.model} />
                         {isParent ? (
-                          <Info label="Cost to Replace" value={asset.cost_to_replace ? `$${asset.cost_to_replace}` : 'N/A'} />
+                          <>
+                            <Info label="Cost to Replace" value={asset.cost_to_replace ? `$${asset.cost_to_replace}` : 'N/A'} />
+                            <Info label="Hours Per Week" value={asset.hours_run_per_week || 'N/A'} />
+                          </>
                         ) : (
                           <>
                             <Info label="Plan Start Date" value={formatDate(asset.plan_start_date)} />
-                            <Info label="Operating Hours" value={asset.operating_hours} />
                           </>
                         )}
                       </div>

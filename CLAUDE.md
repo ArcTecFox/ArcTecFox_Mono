@@ -141,6 +141,7 @@ return (
 
 ## Development Rules
 1. **Reuse existing functions** from `api.js`, `storageService.js`
-2. **Follow exact query patterns** 
+2. **Follow exact query patterns**
 3. **Test RLS changes in dev first**
 4. **Check existing patterns before creating new ones**
+5. **Prompt workflow**: All Gemini prompt reviews/updates must start with gemini-prompt-engineer agent for optimization, then ai-engineer agent implements the optimized prompts

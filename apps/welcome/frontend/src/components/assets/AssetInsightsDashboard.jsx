@@ -221,21 +221,17 @@ const AssetInsightsDashboard = React.memo(({ parentAsset, childAssets }) => {
       return sum + (parseFloat(consumable.cost) || 0);
     }, 0);
 
-    // Calculate operating hours based on selected assets
+    // Calculate operating hours based on parent asset's hours_run_per_week
     let operatingHours = 0;
-    if (selectedChildAsset === 'all') {
-      // Sum operating hours for all child assets
-      operatingHours = childAssets.reduce((sum, child) => {
-        const hoursPerWeek = parseFloat(child.operating_hours) || 0;
-        const weeks = daysInProduction / 7;
-        return sum + (hoursPerWeek * weeks);
-      }, 0);
-    } else {
-      // Get operating hours for selected child asset
-      const selectedChild = childAssets.find(c => c.id === selectedChildAsset);
-      if (selectedChild) {
-        const hoursPerWeek = parseFloat(selectedChild.operating_hours) || 0;
-        const weeks = daysInProduction / 7;
+    if (parentAsset && parentAsset.hours_run_per_week) {
+      const hoursPerWeek = parseFloat(parentAsset.hours_run_per_week) || 0;
+      const weeks = daysInProduction / 7;
+
+      if (selectedChildAsset === 'all') {
+        // Use parent's hours_run_per_week multiplied by number of child assets
+        operatingHours = hoursPerWeek * weeks * childAssets.length;
+      } else {
+        // Use parent's hours_run_per_week for single child asset
         operatingHours = hoursPerWeek * weeks;
       }
     }

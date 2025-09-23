@@ -633,6 +633,25 @@ export const generateAIPlan = async (planData) => {
     console.log('🔍 Backend URL:', BACKEND_URL);
     console.log('🔍 Full URL:', `${BACKEND_URL}/api/generate-ai-plan`);
 
+    // Calculate parent_asset_id if this is a child asset plan
+    let enrichedPlanData = { ...planData };
+
+    if (planData.child_asset_id && !planData.parent_asset_id) {
+      // Fetch parent_asset_id from child_assets table
+      const { data: childAssetData, error: childError } = await supabase
+        .from('child_assets')
+        .select('parent_asset_id')
+        .eq('id', planData.child_asset_id)
+        .single();
+
+      if (childError) {
+        console.warn('⚠️ Could not fetch parent_asset_id for child asset:', childError);
+      } else if (childAssetData?.parent_asset_id) {
+        enrichedPlanData.parent_asset_id = childAssetData.parent_asset_id;
+        console.log('📊 Enriched planData with parent_asset_id:', childAssetData.parent_asset_id);
+      }
+    }
+
     // Get current session for auth token
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
@@ -652,7 +671,7 @@ export const generateAIPlan = async (planData) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ planData }),
+        body: JSON.stringify(enrichedPlanData),
         signal: controller.signal, // Add abort signal for timeout
       });
 
@@ -765,11 +784,11 @@ export const fetchPMPlans = async () => {
           model,
           serial_number,
           category,
-          operating_hours,
           addtl_context,
           parent_assets!parent_asset_id (
             id,
-            name
+            name,
+            hours_run_per_week
           )
         )
       `)
@@ -2100,7 +2119,7 @@ export const generateParentPlan = async (parentAssetData) => {
         environment: parentAssetData.environment,
         additional_context: parentAssetData.additional_context,
         user_manual_content: parentAssetData.user_manual_content,
-        operating_hours: parentAssetData.operating_hours || '24/7',
+        hours_run_per_week: parentAssetData.hours_run_per_week || '168',
         pm_frequency: parentAssetData.pm_frequency || 'Standard',
         criticality: parentAssetData.criticality || 'Medium'
       })

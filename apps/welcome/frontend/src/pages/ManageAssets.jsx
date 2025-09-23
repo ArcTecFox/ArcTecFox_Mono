@@ -74,6 +74,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
     install_date: '',
     notes: '',
     cost_to_replace: '',
+    hours_run_per_week: '',
     site_id: ''
   });
   const [newChildAsset, setNewChildAsset] = useState({
@@ -85,7 +86,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
     purchase_date: '',
     install_date: '',
     notes: '',
-    operating_hours: '',
     addtl_context: '',
     plan_start_date: '',
     criticality: '',
@@ -592,7 +592,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
           site_location: site?.name || 'Unknown',
           environment: site?.environment || 'Standard industrial',
           additional_context: parentAsset.notes,
-          operating_hours: '24/7',
           pm_frequency: 'Standard',
           criticality: 'Medium'
         };
@@ -819,6 +818,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         install_date: '',
         notes: '',
         cost_to_replace: '',
+        hours_run_per_week: '',
         site_id: userSites.length === 1 ? userSites[0].id : ''
       });
       setParentManualFile(null);
@@ -902,7 +902,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         purchase_date: newChildAsset.purchase_date ? newChildAsset.purchase_date : null,
         install_date: newChildAsset.install_date ? newChildAsset.install_date : null,
         notes: newChildAsset.notes,
-        operating_hours: newChildAsset.operating_hours || null,
         addtl_context: newChildAsset.addtl_context || null,
         plan_start_date: newChildAsset.plan_start_date ? newChildAsset.plan_start_date : null,
         criticality: newChildAsset.criticality || null,
@@ -941,7 +940,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         purchase_date: '',
         install_date: '',
         notes: '',
-        operating_hours: '',
         addtl_context: '',
         plan_start_date: '',
         criticality: '',
@@ -1202,7 +1200,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       purchase_date: formatDateForInput(asset.purchase_date),
       install_date: formatDateForInput(asset.install_date),
       notes: asset.notes || '',
-      cost_to_replace: asset.cost_to_replace || ''
+      cost_to_replace: asset.cost_to_replace || '',
+      hours_run_per_week: asset.hours_run_per_week || ''
     };
     
     // Include make, model, serial_number for both parent and child assets
@@ -1215,7 +1214,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       // For child assets, map serial_no database field to serial_number frontend field
       modalData.serial_number = asset.serial_no || '';
       // Include additional fields for child assets
-      modalData.operating_hours = asset.operating_hours || '';
       modalData.addtl_context = asset.addtl_context || '';
       modalData.plan_start_date = formatDateForInput(asset.plan_start_date);
       modalData.criticality = asset.criticality || '';
@@ -1273,7 +1271,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
           delete dataToUpdate.serial_number; // Remove the frontend field name
         }
         // Ensure new fields are included with proper null handling
-        dataToUpdate.operating_hours = dataToUpdate.operating_hours || null;
         dataToUpdate.addtl_context = dataToUpdate.addtl_context || null;
         dataToUpdate.plan_start_date = dataToUpdate.plan_start_date ? dataToUpdate.plan_start_date : null;
       }
@@ -1922,7 +1919,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
             suggestion.common_failures?.length > 0 ? `Common Failures: ${suggestion.common_failures.join(', ')}` : '',
             suggestion.additional_notes ? `Additional Notes: ${suggestion.additional_notes}` : ''
           ].filter(Boolean).join('\n\n') || null,
-          operating_hours: null,
           addtl_context: null,
           criticality: suggestion.criticality_level || null, // Store criticality in dedicated field
           cost_to_replace: null, // User will fill this in later
@@ -2062,66 +2058,25 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       
       // Prepare form data similar to PMPlanner
       const formData = {
-        // Core asset identification
+        // Core asset identification (required by PMPlanInput)
         name: childAsset.name,
         model: childAsset.model || '',
         serial: childAsset.serial_no || '',
         category: childAsset.category || '',
-        
-        // PM planning fields
-        hours: childAsset.operating_hours?.toString() || '',
+
+        // PM planning fields (required by PMPlanInput)
+        hours: parentAsset.hours_run_per_week?.toString() || '0',
+        frequency: 'Standard', // Default value
+        criticality: childAsset.criticality || 'Medium', // Default value
         additional_context: childAsset.addtl_context || '',
-        environment: parentAsset.environment || '', // Inherited from parent
-        date_of_plan_start: childAsset.plan_start_date || '',
-        
-        // Asset hierarchy information
-        child_asset_id: childAsset.id,
+
+        // Optional fields for PMPlanInput
+        parent_asset: parentAsset.name || null,
+        child_asset: childAsset.name || null,
+        site_location: parentAsset.sites?.name || null,
+        environment: parentAsset.environment || null,
         parent_asset_id: parentAsset.id,
-        
-        // Asset details for AI context
-        purchase_date: childAsset.purchase_date || '',
-        install_date: childAsset.install_date || '',
-        asset_notes: childAsset.notes || '',
-        
-        // Site and user information
-        email: user?.email || "asset-management@example.com",
-        company: parentAsset.sites?.companies?.name || "Unknown Company",
-        site_name: parentAsset.sites?.name || "Unknown Site",
-        siteId: parentAsset.site_id,
-        
-        // Manual information
-        userManual: childManuals[0] || null,
-        manuals: childManuals,
-        manual_count: childManuals.length,
-        
-        // Complete asset context for AI
-        asset_full_details: {
-          parent_asset: {
-            id: parentAsset.id,
-            name: parentAsset.name,
-            model: parentAsset.model,
-            serial_number: parentAsset.serial_number,
-            category: parentAsset.category,
-            purchase_date: parentAsset.purchase_date,
-            install_date: parentAsset.install_date,
-            notes: parentAsset.notes,
-            environment: parentAsset.environment || ''
-          },
-          child_asset: {
-            id: childAsset.id,
-            name: childAsset.name,
-            model: childAsset.model,
-            serial_number: childAsset.serial_no,
-            category: childAsset.category,
-            purchase_date: childAsset.purchase_date,
-            install_date: childAsset.install_date,
-            notes: childAsset.notes,
-            operating_hours: childAsset.operating_hours,
-            addtl_context: childAsset.addtl_context,
-            plan_start_date: childAsset.plan_start_date,
-            parent_environment: parentAsset.environment || ''
-          }
-        }
+        child_asset_id: childAsset.id
       };
       
       console.log('Generating PM plan for child asset:', formData);
@@ -2164,9 +2119,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
     } catch (error) {
       console.error('Error creating/updating PM plan:', error);
-
-      // Clean up timers on error
-      cleanupTimers();
 
       // Set error state for modal
       setPmPlanError({
@@ -2328,6 +2280,18 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hours Run Per Week
+                </label>
+                <input
+                  type="number"
+                  value={newParentAsset.hours_run_per_week}
+                  onChange={(e) => setNewParentAsset(prev => ({ ...prev, hours_run_per_week: e.target.value }))}
+                  placeholder="Hours per week"
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Notes
                 </label>
                 <textarea
@@ -2374,6 +2338,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                       install_date: '',
                       notes: '',
                       cost_to_replace: '',
+                      hours_run_per_week: '',
                       site_id: userSites.length === 1 ? userSites[0].id : ''
                     });
                     setParentManualFile(null);
@@ -2663,7 +2628,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                                     purchase_date: selectedParentAsset.purchase_date || '',
                                     install_date: selectedParentAsset.install_date || '',
                                     notes: '',
-                                    operating_hours: '',
                                     addtl_context: '',
                                     plan_start_date: '',
                                     criticality: '',
@@ -2809,18 +2773,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                                   </div>
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Operating Hours
-                                    </label>
-                                    <input
-                                      type="number"
-                                      value={newChildAsset.operating_hours}
-                                      onChange={(e) => setNewChildAsset(prev => ({ ...prev, operating_hours: e.target.value }))}
-                                      placeholder="Hours per day"
-                                      className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Plan Start Date
                                     </label>
                                     <input
@@ -2921,7 +2873,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                                         purchase_date: '',
                                         install_date: '',
                                         notes: '',
-                                        operating_hours: '',
                                         addtl_context: '',
                                         plan_start_date: '',
                                         criticality: '',
@@ -3016,12 +2967,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">{selectedChildAssetForPlan.category || '-'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Operating Hours</label>
-                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">
-                    {selectedChildAssetForPlan.operating_hours ? `${selectedChildAssetForPlan.operating_hours} hrs/day` : '-'}
-                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Criticality</label>
@@ -3379,20 +3324,22 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+                {editModalIsParent && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Hours Run Per Week
+                    </label>
+                    <input
+                      type="number"
+                      value={editModalData.hours_run_per_week}
+                      onChange={(e) => setEditModalData(prev => ({ ...prev, hours_run_per_week: e.target.value }))}
+                      placeholder="Hours per week"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                )}
                 {!editModalIsParent && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Operating Hours
-                      </label>
-                      <input
-                        type="number"
-                        value={editModalData.operating_hours}
-                        onChange={(e) => setEditModalData(prev => ({ ...prev, operating_hours: e.target.value }))}
-                        placeholder="Hours per day"
-                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Plan Start Date

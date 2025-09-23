@@ -92,20 +92,6 @@ const AssetForm = React.memo(({
           </div>
 
           <div>
-            <label htmlFor="operatingHours" className="block text-sm font-medium text-gray-700 mb-1">
-              Operating Hours
-            </label>
-            <input
-              type="number"
-              id="operatingHours"
-              name="operating_hours"
-              value={formData.operating_hours || ''}
-              onChange={onInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
             <label htmlFor="parentAssetDisplay" className="block text-sm font-medium text-gray-700 mb-1">
               Parent Asset
             </label>
@@ -171,20 +157,35 @@ const AssetForm = React.memo(({
 
       {/* Parent-specific fields */}
       {isParent && (
-        <div>
-          <label htmlFor="costToReplace" className="block text-sm font-medium text-gray-700 mb-1">
-            Cost to Replace ($)
-          </label>
-          <input
-            type="number"
-            id="costToReplace"
-            name="cost_to_replace"
-            value={formData.cost_to_replace || ''}
-            onChange={onInputChange}
-            step="0.01"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <>
+          <div>
+            <label htmlFor="costToReplace" className="block text-sm font-medium text-gray-700 mb-1">
+              Cost to Replace ($)
+            </label>
+            <input
+              type="number"
+              id="costToReplace"
+              name="cost_to_replace"
+              value={formData.cost_to_replace || ''}
+              onChange={onInputChange}
+              step="0.01"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="hoursRunPerWeek" className="block text-sm font-medium text-gray-700 mb-1">
+              Hours Run Per Week
+            </label>
+            <input
+              type="number"
+              id="hoursRunPerWeek"
+              name="hours_run_per_week"
+              value={formData.hours_run_per_week || ''}
+              onChange={onInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </>
       )}
 
       {/* File Upload */}
