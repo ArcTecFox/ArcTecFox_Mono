@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const AssetDetailsModal = ({
   show,
@@ -10,6 +10,8 @@ const AssetDetailsModal = ({
   onConfirm,
   manualProvided
 }) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+
   if (!show) return null;
 
   const handleInputChange = (field, value) => {
@@ -23,12 +25,13 @@ const AssetDetailsModal = ({
     return extractedData[field] !== null && extractedData[field] !== '';
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     // Basic validation - at least name should be provided from parent component
     if (!assetDetails.make && !assetDetails.model && !assetDetails.serial_number && !assetDetails.category) {
       // Allow proceeding even with empty fields as they're optional
     }
-    onConfirm();
+    setIsProcessing(true);
+    await onConfirm();
   };
 
   return (
@@ -54,8 +57,23 @@ const AssetDetailsModal = ({
           </div>
         )}
 
+        {/* Processing State */}
+        {isProcessing && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+            <p className="text-center text-gray-600">
+              Creating asset...
+            </p>
+            <p className="text-center text-sm text-gray-500">
+              Please wait while we save your asset
+            </p>
+          </div>
+        )}
+
         {/* Form Fields */}
-        {!extracting && (
+        {!extracting && !isProcessing && (
           <div className="space-y-4">
             {manualProvided && Object.values(extractedData).some(v => v !== null) && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -136,15 +154,21 @@ const AssetDetailsModal = ({
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                disabled={isProcessing}
+                className={`px-4 py-2 text-white rounded-lg transition-colors text-sm ${
+                  isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-600 hover:bg-gray-700'
+                }`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                disabled={isProcessing}
+                className={`px-4 py-2 text-white rounded-lg transition-colors text-sm ${
+                  isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                }`}
               >
-                Confirm & Create Asset
+                {isProcessing ? 'Creating...' : 'Confirm & Create Asset'}
               </button>
             </div>
           </div>
