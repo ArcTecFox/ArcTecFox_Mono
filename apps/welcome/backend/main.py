@@ -345,7 +345,7 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 - Model: {plan_data.model}
 - Serial Number: {plan_data.serial}
 - Asset Category: {plan_data.category}
-- Usage Hours: {calculated_hours} hours (calculated from parent asset operation)
+- Usage Hours: {plan_data.hours or 0} hours
 - Usage Cycles: {plan_data.cycles or 0} cycles
 - Environmental Conditions: {plan_data.environment}
 - Date of Plan Start: {plan_data.date_of_plan_start or datetime.now().strftime('%Y-%m-%d')}

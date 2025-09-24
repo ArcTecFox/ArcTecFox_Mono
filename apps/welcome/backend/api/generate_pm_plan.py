@@ -339,7 +339,9 @@ async def generate_ai_plan(input: PMPlanInput, request: Request):
         _validate_plan_structure(plan_json)
 
         logger.info("✅ AI plan generated and validated successfully")
-        return {"plan": ai_output, "plan_json": plan_json}
+        # Return in the format expected by the frontend (AIPlanResponse)
+        maintenance_tasks = plan_json.get("maintenance_plan", [])
+        return {"success": True, "data": maintenance_tasks}
 
     except Exception as e:
         logger.error(f"🧠 Gemini error: {e}")
