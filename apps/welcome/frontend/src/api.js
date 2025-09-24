@@ -684,8 +684,10 @@ export const generateAIPlan = async (planData) => {
       }
 
       const result = await response.json();
+      console.log('🔍 Backend response:', result);
 
       if (!result.success) {
+        console.error('❌ Backend returned success=false:', result);
         throw new Error('AI plan generation failed');
       }
 
