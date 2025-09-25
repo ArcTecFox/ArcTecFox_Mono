@@ -583,25 +583,33 @@ export const savePMPlanResults = async (pmPlanId, aiGeneratedPlan, criticality =
     aiGeneratedPlan.forEach((task, index) => {
       console.log(`  Task ${index + 1}: ${task.task_name} - consumables:`, task.consumables);
     });
-    
+
+    // Helper function to convert arrays to comma-separated text for text columns
+    const arrayToText = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter(v => v && v !== 'Not applicable').join(', ');
+      }
+      return value || null;
+    };
+
     const resultsToInsert = aiGeneratedPlan.map(task => ({
       pm_plan_id: pmPlanId,
       task_name: task.task_name,
       maintenance_interval: task.maintenance_interval,
-      instructions: task.instructions,
+      instructions: task.instructions, // Keep as array for jsonb[] column
       reason: task.reason,
       engineering_rationale: task.engineering_rationale,
-      safety_precautions: task.safety_precautions,
-      common_failures_prevented: task.common_failures_prevented,
+      safety_precautions: arrayToText(task.safety_precautions), // Convert array to text
+      common_failures_prevented: arrayToText(task.common_failures_prevented), // Convert array to text
       usage_insights: task.usage_insights,
-      scheduled_dates: Array.isArray(task.scheduled_dates) 
-        ? task.scheduled_dates 
+      scheduled_dates: Array.isArray(task.scheduled_dates)
+        ? task.scheduled_dates
         : task.scheduled_dates || null,
-      est_minutes: task.time_to_complete || null,
-      tools_needed: task.tools_needed || null,
+      est_minutes: task.estimated_time_minutes || task.time_to_complete || null,
+      tools_needed: arrayToText(task.tools_needed), // Convert array to text
       no_techs_needed: task.number_of_technicians || 1,
-      consumables: task.consumables || null,
-      criticality: criticality // Add criticality field
+      consumables: arrayToText(task.consumables), // Convert array to text
+      criticality: task.criticality_rating || criticality // Use task's criticality or fallback
     }));
 
     const { data, error } = await supabase
@@ -2214,17 +2222,25 @@ export const createParentPMPlan = async (parentAssetId, siteId) => {
 export const createPMTasks = async (pmPlanId, tasks) => {
   try {
     console.log('📝 Creating PM tasks for plan:', pmPlanId);
-    
+
+    // Helper function to convert arrays to comma-separated text for text columns
+    const arrayToText = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter(v => v && v !== 'Not applicable').join(', ');
+      }
+      return value || null;
+    };
+
     const tasksToInsert = tasks.map(task => ({
       pm_plan_id: pmPlanId,
       task_name: task.task_name,
       maintenance_interval: task.maintenance_interval, // Store as string, parse when calculating due dates
-      instructions: task.instructions || [],
+      instructions: task.instructions || [], // Keep as array for jsonb[] column
       reason: task.reason,
       engineering_rationale: task.engineering_rationale,
-      safety_precautions: task.safety_precautions,
-      common_failures_prevented: task.common_failures_prevented,
-      tools_needed: task.tools_needed,
+      safety_precautions: arrayToText(task.safety_precautions), // Convert array to text
+      common_failures_prevented: arrayToText(task.common_failures_prevented), // Convert array to text
+      tools_needed: arrayToText(task.tools_needed), // Convert array to text
       est_minutes: parseInt(task.estimated_time_minutes) || 30,
       criticality: task.criticality_rating || 'Medium',
       created_at: new Date().toISOString()

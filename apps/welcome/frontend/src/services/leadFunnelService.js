@@ -74,23 +74,31 @@ export async function saveLeadAndPlan({ form, lead, tasks }) {
 
   // 4) create pm_tasks (bulk)
   if (Array.isArray(tasks) && tasks.length > 0) {
+    // Helper function to convert arrays to comma-separated text for text columns
+    const arrayToText = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter(v => v && v !== 'Not applicable').join(', ');
+      }
+      return value || null;
+    };
+
     const tasksPayload = tasks.map((t) => ({
       pm_plan_id: planRow.id,
       task_name: t.task_name || t.name || "Task",
       maintenance_interval: t.maintenance_interval || t.interval || null,
-      instructions: toArray(t.instructions),
+      instructions: toArray(t.instructions), // Keep as array for jsonb[] column
       reason: t.reason || null,
       engineering_rationale: t.engineering_rationale || null,
-      safety_precautions: t.safety_precautions || null,
-      common_failures_prevented: t.common_failures_prevented || null,
+      safety_precautions: arrayToText(t.safety_precautions), // Convert array to text
+      common_failures_prevented: arrayToText(t.common_failures_prevented), // Convert array to text
       usage_insights: t.usage_insights || null,
       scheduled_dates: toArray(t.scheduled_dates),
-      est_minutes: t.est_minutes || null,
-      tools_needed: t.tools_needed || null,
-      no_techs_needed: t.no_techs_needed ? Number(t.no_techs_needed) : null,
-      consumables: t.consumables || null,
+      est_minutes: t.estimated_time_minutes || t.est_minutes || null,
+      tools_needed: arrayToText(t.tools_needed), // Convert array to text
+      no_techs_needed: t.number_of_technicians || (t.no_techs_needed ? Number(t.no_techs_needed) : null),
+      consumables: arrayToText(t.consumables), // Convert array to text
       status: "draft",
-      criticality: t.criticality || null
+      criticality: t.criticality_rating || t.criticality || null
     }));
 
     const { error: tasksErr } = await supabase.from("pm_tasks").insert(tasksPayload);
