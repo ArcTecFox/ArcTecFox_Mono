@@ -84,10 +84,11 @@ POLICIES (MANDATORY)
 - If no manual content is available, use recognized standards/suppliers (ISO/ASTM/API; SKF/Mobil/Shell). Cite them. Never write “refer to the manual”; always provide actual values/steps.
 - Do not include calendar dates anywhere; use numeric intervals in **weeks** only.
 
-TASK TYPE RESTRICTIONS
+
 - CRITICAL: Do NOT include "Visual Inspection" or "Monthly cleaning" tasks at the child asset level as these are handled at the parent asset level.
 - Exclude any routine cleaning or visual-only inspections unless the OEM manual explicitly prescribes them for this specific component (not general system) or a standard/supplier requires them. If included, cite the exact source.
 - Focus on technical, measurable tasks specific to the child asset (lubrication, torque, calibration, functional checks, replacements, adjustments, monitoring, safety interlocks).
+
 
 DEDUPLICATION & INHERITANCE
 - Treat Site Location, Environment, Operating Hours, and Criticality as universal context. Do NOT repeat them in every field; only note deviations in "context_overrides".
