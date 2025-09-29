@@ -19,7 +19,8 @@ const TermsOfService = React.lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy"));
 const AcceptInvitation = React.lazy(() => import("./pages/AcceptInvitation"));
 
-const FAQ = React.lazy(() => import("./pages/FAQ")); // ← add this
+const FAQ = React.lazy(() => import("./pages/FAQ"));
+const ApprovedSignup = React.lazy(() => import("./pages/ApprovedSignup"));
 
 
 function ProtectedRoute({ children }) {

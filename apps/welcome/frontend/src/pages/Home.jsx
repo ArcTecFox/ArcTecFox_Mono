@@ -218,7 +218,7 @@ export default function Home() {
             <p className="text-lg text-gray-700 mb-8 max-w-3xl mx-auto leading-relaxed">
               ArcTecFox provides the most effective preventive maintenance plans in the industry — prevent failure before it happens, optimize reliability, and scale maintenance with confidence.
             </p>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex flex-col items-center justify-center gap-3">
               <button
                 onClick={scrollToGenerator}
                 className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
