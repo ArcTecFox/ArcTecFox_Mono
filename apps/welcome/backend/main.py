@@ -47,9 +47,13 @@ from api.suggest_child_assets import router as child_assets_router
 from api.agent_executor import router as agent_router
 from api.bulk_import import router as bulk_import_router
 from api.full_parent_create_prompt import router as parent_plan_router
+from api.access_requests import router as access_requests_router, send_notification_email
+from api.extract_asset_details import router as extract_details_router
+from api.pm_plan_notification import router as pm_plan_notification_router
 from api.send_invitation import InvitationRequest, send_invitation_email
 from api.send_test_invitation import TestInvitationRequest, send_test_invitation_email
 from api.add_existing_user import AddExistingUserRequest, AddExistingUserResponse, add_existing_user_to_site
+from api.pm_routes import router as pm_routes_router
 
 # Load environment variables
 load_dotenv()
@@ -93,6 +97,10 @@ app.include_router(child_assets_router, prefix="/api", tags=["child-assets"])
 app.include_router(agent_router, prefix="/api", tags=["agents"])
 app.include_router(bulk_import_router, prefix="/api", tags=["bulk-import"])
 app.include_router(parent_plan_router, prefix="/api", tags=["parent-plans"])
+app.include_router(access_requests_router, prefix="/api", tags=["access-requests"])
+app.include_router(extract_details_router, prefix="/api", tags=["extraction"])
+app.include_router(pm_plan_notification_router, tags=["pm-notifications"])
+app.include_router(pm_routes_router, tags=["pm-plans"])
 
 # Environment-based CORS configuration with smart pattern matching
 cors_origins_env = os.getenv("CORS_ORIGIN", "https://arctecfox-mono.vercel.app")
@@ -219,6 +227,7 @@ class PlanData(BaseModel):
     hours: Optional[str] = Field("0", max_length=20, description="Operating hours")
     cycles: Optional[str] = Field("0", max_length=20, description="Operating cycles")
     environment: Optional[str] = Field(None, max_length=500, description="Environmental conditions")
+    additional_context: Optional[str] = Field(None, max_length=1000, description="Additional context for PM planning")
     date_of_plan_start: Optional[str] = Field(None, max_length=20, description="Plan start date")
     userManual: Optional[UserManual] = None
     parent_asset_id: Optional[str] = Field(None, description="Parent asset ID")
@@ -280,63 +289,54 @@ async def generate_ai_plan(
         if not plan_data.name or not plan_data.category:
             raise HTTPException(status_code=400, detail="Missing required fields: name and category")
 
-        # Extract file content if user manual is provided
-        user_manual_content = ""
-        if plan_data.userManual:
-            logger.info(f"📄 Processing user manual: {plan_data.userManual.fileName}")
-            user_manual_content = await file_processor.extract_text_from_file(
-                plan_data.userManual.filePath, 
-                plan_data.userManual.fileType
-            )
-            if user_manual_content:
-                # Log manual details for debugging
-                manual_lines = user_manual_content.split('\n')
-                first_10_lines = '\n'.join(manual_lines[:10])
-                
-                logger.info(f"📚 Manual Content Detected for Child Asset PM Plan!")
-                logger.info(f"📚 Manual filename: {plan_data.userManual.fileName}")
-                logger.info(f"📚 Manual length: {len(user_manual_content)} characters")
-                logger.info(f"📚 Manual has {len(manual_lines)} lines")
-                logger.info(f"📚 First 10 lines of manual:\n{first_10_lines}")
-            else:
-                logger.warning("⚠️ Failed to extract content from user manual")
-        else:
-            logger.info("📚 No manual content provided for this child asset PM plan")
+        # Child assets inherit their parent's manual - fetch parent manual content
+        manual_content = ""
 
-        # Fetch parent asset manual if parent_asset_id is provided
-        parent_manual_content = ""
         if plan_data.parent_asset_id:
-            logger.info(f"🔍 Looking for parent asset manual with parent_asset_id: {plan_data.parent_asset_id}")
+            logger.info(f"🔍 Child asset PM generation - fetching parent manual for parent_asset_id: {plan_data.parent_asset_id}")
             try:
-                # Use service client - this bypasses RLS and should work
+                from database import get_service_supabase_client
                 service_client = get_service_supabase_client()
-                
-                # Query loaded_manuals for parent asset manual  
-                parent_manual_response = service_client.table('loaded_manuals').select('file_path,file_type,original_name').eq('parent_asset_id', plan_data.parent_asset_id).limit(1).execute()
-                
-                logger.info(f"📚 Query response data: {parent_manual_response.data}")
-                logger.info(f"📚 Query response count: {len(parent_manual_response.data) if parent_manual_response.data else 0}")
-                
+
+                # Query loaded_manuals for parent asset manual - include extracted_text
+                parent_manual_response = service_client.table('loaded_manuals').select('file_path,file_type,original_name,extracted_text').eq('parent_asset_id', plan_data.parent_asset_id).limit(1).execute()
+
+                logger.info(f"📚 Parent manual query response count: {len(parent_manual_response.data) if parent_manual_response.data else 0}")
+
                 if parent_manual_response.data and len(parent_manual_response.data) > 0:
                     parent_manual = parent_manual_response.data[0]
                     logger.info(f"📚 Found parent asset manual: {parent_manual['original_name']}")
-                    
-                    logger.info(f"📚 Attempting to extract from file_path: {parent_manual['file_path']}")
-                    logger.info(f"📚 File type: {parent_manual['file_type']}")
-                    
-                    parent_manual_content = await file_processor.extract_text_from_file(
-                        parent_manual['file_path'],
-                        parent_manual['file_type']
-                    )
-                    
-                    if parent_manual_content:
-                        logger.info(f"📚 Successfully extracted parent manual content: {len(parent_manual_content)} characters")
+
+                    # Try to use stored extracted text first (preferred method)
+                    if parent_manual.get('extracted_text'):
+                        manual_content = parent_manual['extracted_text']
+                        logger.info(f"📚 Using stored extracted text from database: {len(manual_content)} characters")
+
+                        # Log sample content for debugging
+                        manual_lines = manual_content.split('\n')
+                        first_10_lines = '\n'.join(manual_lines[:10])
+                        logger.info(f"📚 Manual has {len(manual_lines)} lines")
+                        logger.info(f"📚 First 10 lines of manual:\n{first_10_lines}")
+                    else:
+                        # Fallback to file processing if no stored text
+                        logger.info(f"📚 No stored text found, extracting from file_path: {parent_manual['file_path']}")
+                        logger.info(f"📚 File type: {parent_manual['file_type']}")
+
+                        manual_content = await file_processor.extract_text_from_file(
+                            parent_manual['file_path'],
+                            parent_manual['file_type']
+                        )
+
+                        if manual_content:
+                            logger.info(f"📚 Successfully extracted parent manual content from file: {len(manual_content)} characters")
+                        else:
+                            logger.warning("⚠️ Failed to extract content from parent manual file")
                 else:
-                    logger.info(f"📚 No parent manual found in database for parent_asset_id: {plan_data.parent_asset_id}")
+                    logger.warning(f"📚 No parent manual found in database for parent_asset_id: {plan_data.parent_asset_id}")
             except Exception as e:
                 logger.error(f"⚠️ Error fetching parent manual: {e}")
         else:
-            logger.info("📚 No parent_asset_id provided, skipping parent manual fetch")
+            logger.warning("📚 No parent_asset_id provided - child assets should always have a parent_asset_id")
 
         prompt = f"""
 Generate a detailed preventive maintenance (PM) plan for the following asset:
@@ -352,22 +352,32 @@ Generate a detailed preventive maintenance (PM) plan for the following asset:
 
 {f'''
 **USER MANUAL CONTENT:**
-{f"CHILD ASSET MANUAL:" if user_manual_content and parent_manual_content else ""}
-{user_manual_content if user_manual_content else ""}
-
-{f"PARENT ASSET MANUAL:" if parent_manual_content else ""}
-{parent_manual_content if parent_manual_content else ""}
+{manual_content}
 
 **END OF USER MANUAL CONTENT**
 
-Use the information from the manual(s) above to determine recommended maintenance tasks and intervals. If specific maintenance procedures are mentioned in the manual, follow those recommendations. If the manual is not available or doesn't contain specific maintenance information, infer recommendations from best practices for similar assets in the same category.
-''' if (user_manual_content or parent_manual_content) else '''
+CRITICAL RULE - Manual Text Usage:
+When manual_text is provided above:
+1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+3. Each maintenance task MUST incorporate the actual details found in the manual text
+4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+5. Include step-by-step procedures as found in the manual
+
+INCORRECT (NEVER do this):
+"Task: Change hydraulic filter - Refer to user manual for proper procedure"
+
+CORRECT (ALWAYS do this):
+"Task: Change hydraulic filter - Remove cover plate (4 bolts, 15mm), drain hydraulic fluid, remove filter element P/N HF-2341, inspect O-ring, install new filter with 25 ft-lbs torque (Section 4.3.2), refill with ISO 46 oil (15 liters)"
+
+Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
+''' if manual_content else '''
 Use the manufacturer's user manual to determine recommended maintenance tasks and intervals. If the manual is not available, infer recommendations from best practices for similar assets in the same category.
 '''}
 
-Be as detailed as possible in the instructions and reference the user manual content when applicable.
+Be as detailed as possible in the instructions and include specific technical details from the manual content when available.
 
-**Usage Insights**  
+**Usage Insights**
 - Provide a concise write-up (in a field named "usage_insights") that analyzes this asset's current usage profile ({plan_data.hours or 0} hours and {plan_data.cycles or 0} cycles), noting the typical outages or failure modes that occur at this stage in the asset's life.
 
 For each PM task:
@@ -515,6 +525,386 @@ async def export_pdf(
         logger.error("❌ Error generating PDF:\n%s", traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal error during PDF generation: {str(e)}")
 
+# Model for lead capture request
+class LeadCaptureRequest(BaseModel):
+    planData: PlanData
+    email: str
+    company: str
+    fullName: Optional[str] = None
+    requestAccess: bool = False
+
+class LeadCaptureResponse(BaseModel):
+    success: bool
+    data: List[Dict[str, Any]]
+    lead: Dict[str, Any]
+    plan: Dict[str, Any]
+    message: str = ""
+    pdf_url: Optional[str] = None
+
+# Public lead capture endpoint - generates AI plan and saves to database
+@app.post("/api/lead-capture", response_model=LeadCaptureResponse)
+async def lead_capture_endpoint(
+    request: Request, 
+    lead_request: LeadCaptureRequest
+):
+    """Complete lead capture flow: generate AI plan and save to database using service key"""
+    try:
+        plan_data = lead_request.planData
+        logger.info(f"🚀 Lead capture request for: {plan_data.name} from {lead_request.email}")
+        
+        # Get service client for database operations
+        service_client = get_service_supabase_client()
+        
+        # Step 1: Generate AI plan
+        if not plan_data.name or not plan_data.category:
+            raise HTTPException(status_code=400, detail="Missing required fields: name and category")
+
+        prompt = f"""
+Generate a detailed preventive maintenance (PM) plan for the following asset:
+
+Asset Name: {plan_data.name}
+Category: {plan_data.category}
+Model: {plan_data.model or 'Not specified'}
+Serial Number: {plan_data.serial or 'Not specified'}  
+Operating Hours: {plan_data.hours or 'Not specified'}
+Environment: {plan_data.environment or 'Not specified'}
+Additional Context: {plan_data.additional_context or 'Not specified'}
+Plan Start Date: {plan_data.date_of_plan_start or 'Not specified'}
+
+Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
+1. Task name
+2. Maintenance interval (e.g., "Monthly", "Every 3 months", "Every 6 months", "Annually")
+3. Step-by-step instructions
+4. Reason for the task
+5. Engineering rationale
+6. Safety precautions
+7. Common failures prevented
+8. Usage insights  
+9. Estimated time in minutes
+10. Tools needed
+11. Number of technicians needed
+12. Consumables required
+13. Criticality (High/Medium/Low)
+
+Return the response as a JSON array with all fields populated.
+"""
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        ai_response = model.generate_content(prompt)
+        
+        # Parse AI response
+        response_text = ai_response.text.strip()
+        if response_text.startswith('```json'):
+            response_text = response_text[7:]
+        if response_text.endswith('```'):
+            response_text = response_text[:-3]
+        
+        tasks = json.loads(response_text)
+        if not isinstance(tasks, list):
+            tasks = [tasks]
+        
+        logger.info(f"✅ Generated {len(tasks)} PM tasks")
+        
+        # Step 2: Save lead to database
+        # Using only columns that exist in the current schema
+        from datetime import datetime
+        lead_payload = {
+            "email": lead_request.email,
+            "notes": f"Company: {lead_request.company}, Environment: {plan_data.environment or 'Not specified'}, Context: {plan_data.additional_context or 'None'}",
+            "submitted_at": datetime.now().isoformat()
+        }
+        
+        lead_result = service_client.table("pm_leads").insert(lead_payload).execute()
+        lead_data = lead_result.data[0] if lead_result.data else None
+        if not lead_data:
+            raise HTTPException(status_code=500, detail="Failed to save lead")
+        logger.info(f"✅ Saved lead with ID: {lead_data['id']}")
+        
+        # Step 3: Save PM plan
+        # Use current date if plan_start_date is not provided
+        from datetime import datetime
+        plan_start_date = plan_data.date_of_plan_start or datetime.now().strftime('%Y-%m-%d')
+        
+        plan_payload = {
+            "lead_id": lead_data['id'],
+            "plan_start_date": plan_start_date,
+            "asset_name": plan_data.name,
+            "asset_model": plan_data.model,
+            "serial_no": plan_data.serial,
+            "eq_category": plan_data.category,
+            "op_hours": int(plan_data.hours) if plan_data.hours and plan_data.hours.isdigit() else None,
+            "env_desc": plan_data.environment,
+            "additional_context": plan_data.additional_context,
+            "status": "draft",
+            "version": 1
+        }
+        
+        plan_result = service_client.table("pm_plans").insert(plan_payload).execute()
+        plan_data_result = plan_result.data[0] if plan_result.data else None
+        if not plan_data_result:
+            raise HTTPException(status_code=500, detail="Failed to save PM plan")
+        logger.info(f"✅ Saved PM plan with ID: {plan_data_result['id']}")
+        
+        # Step 4: Save PM tasks
+        if tasks:
+            def to_array(v):
+                if isinstance(v, list):
+                    return v
+                if v is None:
+                    return []
+                s = str(v).strip()
+                if not s:
+                    return []
+                return s.split("\n") if "\n" in s else [s]
+            
+            tasks_payload = []
+            for t in tasks:
+                task_data = {
+                    "pm_plan_id": plan_data_result['id'],
+                    "task_name": t.get("Task name") or t.get("task_name") or "Task",
+                    "maintenance_interval": t.get("Maintenance interval") or t.get("maintenance_interval"),
+                    "instructions": to_array(t.get("Step-by-step instructions") or t.get("instructions")),
+                    "reason": t.get("Reason for the task") or t.get("reason"),
+                    "engineering_rationale": t.get("Engineering rationale") or t.get("engineering_rationale"),
+                    "safety_precautions": t.get("Safety precautions") or t.get("safety_precautions"),
+                    "common_failures_prevented": t.get("Common failures prevented") or t.get("common_failures_prevented"),
+                    "usage_insights": t.get("Usage insights") or t.get("usage_insights"),
+                    "est_minutes": t.get("Estimated time in minutes") or t.get("est_minutes"),
+                    "tools_needed": t.get("Tools needed") or t.get("tools_needed"),
+                    "no_techs_needed": int(t.get("Number of technicians needed", 1)) if t.get("Number of technicians needed") else 1,
+                    "consumables": t.get("Consumables required") or t.get("consumables"),
+                    "status": "draft",
+                    "criticality": t.get("Criticality") or t.get("criticality") or "Medium"
+                }
+                tasks_payload.append(task_data)
+            
+            tasks_result = service_client.table("pm_tasks").insert(tasks_payload).execute()
+            logger.info(f"✅ Saved {len(tasks_payload)} PM tasks")
+        
+        # Step 5: Create access request if requested
+        if lead_request.requestAccess and lead_request.fullName:
+            try:
+                logger.info(f"📧 Processing access request for {lead_request.email}")
+                
+                # Check if email already has a pending request
+                existing_request = service_client.table("access_requests").select("*").eq("email", lead_request.email).eq("status", "pending").execute()
+                
+                if not existing_request.data:
+                    access_request_data = {
+                        "email": lead_request.email,
+                        "full_name": lead_request.fullName,
+                        "lead_id": lead_data['id'],
+                        "status": "pending"
+                    }
+                    
+                    access_result = service_client.table("access_requests").insert(access_request_data).execute()
+                    logger.info(f"✅ Created access request record for {lead_request.email}")
+                    
+                    # Send notification email to support
+                    logger.info(f"📨 Attempting to send notification email to support@arctecfox.co")
+                    await send_notification_email(
+                        email=lead_request.email,
+                        full_name=lead_request.fullName,
+                        company_name=lead_request.company
+                    )
+                    logger.info(f"✅ Email notification process completed for {lead_request.email}")
+                else:
+                    logger.info(f"⚠️ Access request already exists for {lead_request.email}")
+            except Exception as e:
+                logger.error(f"❌ Failed to create access request or send email: {e}")
+                logger.error(f"Error details: {str(e)}")
+                # Don't fail the whole process if access request fails
+        
+        # Step 6: Generate PDF with PM plan details
+        pdf_url = None
+        try:
+            # Format tasks data for PDF export function
+            formatted_tasks = []
+            for task in tasks:
+                formatted_task = {
+                    'task_name': task.get("Task name") or task.get("task_name") or "Task",
+                    'asset_name': plan_data.name,
+                    'maintenance_interval': task.get("Maintenance interval") or task.get("maintenance_interval"),
+                    'instructions': task.get("Step-by-step instructions") or task.get("instructions"),
+                    'reason': task.get("Reason for the task") or task.get("reason"),
+                    'engineering_rationale': task.get("Engineering rationale") or task.get("engineering_rationale"),
+                    'safety_precautions': task.get("Safety precautions") or task.get("safety_precautions"),
+                    'common_failures_prevented': task.get("Common failures prevented") or task.get("common_failures_prevented"),
+                    'usage_insights': task.get("Usage insights") or task.get("usage_insights"),
+                    'time_to_complete': f"{task.get('Estimated time in minutes') or task.get('est_minutes') or 'N/A'} minutes",
+                    'tools_needed': task.get("Tools needed") or task.get("tools_needed"),
+                    'no_techs_needed': task.get("Number of technicians needed") or task.get("no_techs_needed") or 1,
+                    'consumables': task.get("Consumables required") or task.get("consumables"),
+                    'criticality': task.get("Criticality") or task.get("criticality") or "Medium"
+                }
+                formatted_tasks.append(formatted_task)
+            
+            # Generate PDF
+            pdf_path = export_pm_plans_data_to_pdf(formatted_tasks)
+            
+            # Store PDF filename for download endpoint
+            pdf_filename = os.path.basename(pdf_path)
+            # Store in temporary location for download
+            temp_pdf_dir = "/tmp/pm_plans"
+            os.makedirs(temp_pdf_dir, exist_ok=True)
+            final_pdf_path = os.path.join(temp_pdf_dir, f"{plan_data_result['id']}_{pdf_filename}")
+            os.rename(pdf_path, final_pdf_path)
+            
+            # Create download URL
+            pdf_url = f"/api/download-pm-plan-pdf/{plan_data_result['id']}/{pdf_filename}"
+            logger.info(f"✅ Generated PDF for PM plan: {final_pdf_path}")
+            
+        except Exception as e:
+            logger.error(f"⚠️ Failed to generate PDF: {e}")
+            # Don't fail the whole process if PDF generation fails
+        
+        return LeadCaptureResponse(
+            success=True,
+            data=tasks,
+            lead=lead_data,
+            plan=plan_data_result,
+            message="Lead captured and PM plan generated successfully",
+            pdf_url=pdf_url
+        )
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse AI response: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse AI response")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in lead capture: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Download PM Plan PDF endpoint - public access for lead capture PDFs
+@app.get("/api/download-pm-plan-pdf/{plan_id}/{filename}")
+async def download_pm_plan_pdf(plan_id: str, filename: str):
+    """Download PM plan PDF generated during lead capture"""
+    try:
+        # Construct the file path
+        pdf_path = f"/tmp/pm_plans/{plan_id}_{filename}"
+        
+        # Check if file exists
+        if not os.path.exists(pdf_path):
+            logger.error(f"❌ PDF not found: {pdf_path}")
+            raise HTTPException(status_code=404, detail="PDF file not found")
+        
+        # Return the file
+        return FileResponse(
+            path=pdf_path,
+            media_type="application/pdf",
+            filename=f"PM_Plan_{plan_id}.pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=PM_Plan_{plan_id}.pdf"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error downloading PDF: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Public AI plan generation endpoint - no authentication required
+@app.post("/api/generate-ai-plan-public", response_model=AIPlanResponse)
+async def generate_ai_plan_public(
+    request: Request, 
+    plan_request: GenerateAIPlanRequest
+):
+    """Generate AI plan for unauthenticated users (lead capture)"""
+    try:
+        plan_data = plan_request.planData
+        logger.info(f"🚀 Public request for AI plan: {plan_data.name}")
+        
+        if not plan_data.name or not plan_data.category:
+            raise HTTPException(status_code=400, detail="Missing required fields: name and category")
+
+        # Extract file content if user manual is provided
+        user_manual_content = ""
+        if plan_data.userManual:
+            logger.info(f"📄 Processing user manual: {plan_data.userManual.fileName}")
+            user_manual_content = await file_processor.extract_text_from_file(
+                plan_data.userManual.filePath, 
+                plan_data.userManual.fileType
+            )
+
+        prompt = f"""
+Generate a detailed preventive maintenance (PM) plan for the following asset:
+
+Asset Name: {plan_data.name}
+Category: {plan_data.category}
+Model: {plan_data.model or 'Not specified'}
+Serial Number: {plan_data.serial or 'Not specified'}
+Operating Hours: {plan_data.hours or 'Not specified'}
+Environment: {plan_data.environment or 'Not specified'}
+Additional Context: {plan_data.additional_context or 'Not specified'}
+Plan Start Date: {plan_data.date_of_plan_start or 'Not specified'}
+
+{f'''User Manual Content:
+{user_manual_content}
+
+CRITICAL RULE - Manual Text Usage:
+When manual content is provided above:
+1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+3. Each maintenance task MUST incorporate the actual details found in the manual text
+4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+5. Include step-by-step procedures as found in the manual
+
+Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
+''' if user_manual_content else ""}
+
+Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
+1. Task name
+2. Maintenance interval (e.g., "Monthly", "Every 3 months", "Every 6 months", "Annually")
+3. Step-by-step instructions
+4. Reason for the task
+5. Engineering rationale
+6. Safety precautions
+7. Common failures prevented
+8. Usage insights  
+9. Estimated time in minutes
+10. Tools needed
+11. Number of technicians needed
+12. Consumables required
+13. Criticality (High/Medium/Low)
+
+Return the response as a JSON array with all fields populated.
+"""
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        ai_response = model.generate_content(prompt)
+        
+        try:
+            # Clean up response text
+            response_text = ai_response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            
+            tasks = json.loads(response_text)
+            
+            # Ensure tasks is a list
+            if not isinstance(tasks, list):
+                tasks = [tasks]
+            
+            logger.info(f"✅ Successfully generated {len(tasks)} PM tasks for public request")
+            return AIPlanResponse(success=True, data=tasks, message="PM plan generated successfully")
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Failed to parse AI response: {e}")
+            return AIPlanResponse(
+                success=False, 
+                data=[], 
+                message="Failed to parse AI response"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating public AI plan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Send invitation endpoint - requires authentication
 @app.post("/api/send-invitation")
 async def send_invitation_endpoint(
@@ -585,6 +975,30 @@ async def debug_gemini():
             "error": str(e),
             "api_key_set": bool(os.getenv("GEMINI_API_KEY"))
         })
+
+# Debug access request notification system
+@app.get("/api/debug-notifications")
+async def debug_notifications(user: AuthenticatedUser = Depends(verify_supabase_token)):
+    """Debug endpoint to check notification system status"""
+    service_client = get_service_supabase_client()
+    
+    # Get count of pending access requests
+    pending_requests = service_client.table("access_requests").select("*").eq("status", "pending").execute()
+    
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "admin_user": user.email,
+        "notification_system": {
+            "method": "Database logging with admin dashboard",
+            "pending_access_requests": len(pending_requests.data) if pending_requests.data else 0,
+            "admin_review_url": f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/admin/super-admins?tab=access-requests"
+        }
+    }
+    
+    logger.info(f"🔔 Notification system check by {user.email}")
+    logger.info(f"   Pending requests: {result['notification_system']['pending_access_requests']}")
+    
+    return JSONResponse(status_code=200, content=result)
 
 # Dev runner
 if __name__ == "__main__":

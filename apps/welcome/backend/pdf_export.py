@@ -192,6 +192,10 @@ def create_signature_section(story, styles):
         [
             Paragraph("Date: _________________________", signature_style),
             Paragraph("Date: _________________________", signature_style)
+        ],
+        [
+            Paragraph("Time to complete: ___ Hours ___ Minutes", signature_style),
+            Paragraph("", signature_style)  # Empty cell for supervisor column
         ]
     ]
     

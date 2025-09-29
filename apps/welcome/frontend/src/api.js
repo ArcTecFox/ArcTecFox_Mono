@@ -140,28 +140,132 @@ export async function getCurrentUser() {
   }
 }
 
-export const savePMLead = async (email, company) => {
-  try {
-    console.log('📝 Saving lead data:', { email, company });
-    
-    const { data, error } = await supabase
-      .from('pm_leads')
-      .insert([{
-        email: email,
-        org_name: company,
-      }])
-      .select()
-      .single();
+// ✅ Password validation helper
+export const validatePassword = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters required");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter required");
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) errors.push("One special character required");
+  return { valid: errors.length === 0, errors };
+};
 
-    if (error) throw error;
+// ✅ Check if email should use Google auth
+export const shouldUseGoogleAuth = (email) => {
+  return email.toLowerCase().includes('@gmail.com');
+};
+
+// ✅ Access Request API Functions - reusing existing patterns
+export const createAccessRequest = async (requestData) => {
+  try {
+    console.log('📝 Creating access request:', requestData);
     
-    console.log('✅ Lead data saved successfully:', data);
-    return data;
+    const response = await fetch(`${BACKEND_URL}/api/request-access`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to create access request');
+    }
+    
+    const result = await response.json();
+    console.log('✅ Access request created successfully');
+    return result;
   } catch (error) {
-    console.error('❌ Error saving lead:', error);
+    console.error('❌ Error creating access request:', error);
     throw error;
   }
 };
+
+export const fetchAccessRequests = async (status = 'pending') => {
+  try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('Authentication required');
+    }
+    
+    const response = await fetch(`${BACKEND_URL}/api/access-requests?status=${status}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to fetch access requests');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('❌ Error fetching access requests:', error);
+    throw error;
+  }
+};
+
+export const approveAccessRequest = async (approvalData) => {
+  try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('Authentication required');
+    }
+    
+    const response = await fetch(`${BACKEND_URL}/api/approve-access`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(approvalData),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to approve access request');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('❌ Error approving access request:', error);
+    throw error;
+  }
+};
+
+export const rejectAccessRequest = async (rejectionData) => {
+  try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('Authentication required');
+    }
+    
+    const response = await fetch(`${BACKEND_URL}/api/reject-access`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rejectionData),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to reject access request');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('❌ Error rejecting access request:', error);
+    throw error;
+  }
+};
+
+// Note: savePMLead function removed - pm_leads table no longer in use
+// User email is already available in the users table
 
 export const savePMPlanInput = async (planData) => {
   try {
@@ -479,25 +583,33 @@ export const savePMPlanResults = async (pmPlanId, aiGeneratedPlan, criticality =
     aiGeneratedPlan.forEach((task, index) => {
       console.log(`  Task ${index + 1}: ${task.task_name} - consumables:`, task.consumables);
     });
-    
+
+    // Helper function to convert arrays to comma-separated text for text columns
+    const arrayToText = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter(v => v && v !== 'Not applicable').join(', ');
+      }
+      return value || null;
+    };
+
     const resultsToInsert = aiGeneratedPlan.map(task => ({
       pm_plan_id: pmPlanId,
       task_name: task.task_name,
       maintenance_interval: task.maintenance_interval,
-      instructions: task.instructions,
+      instructions: task.instructions, // Keep as array for jsonb[] column
       reason: task.reason,
       engineering_rationale: task.engineering_rationale,
-      safety_precautions: task.safety_precautions,
-      common_failures_prevented: task.common_failures_prevented,
+      safety_precautions: arrayToText(task.safety_precautions), // Convert array to text
+      common_failures_prevented: arrayToText(task.common_failures_prevented), // Convert array to text
       usage_insights: task.usage_insights,
-      scheduled_dates: Array.isArray(task.scheduled_dates) 
-        ? task.scheduled_dates 
+      scheduled_dates: Array.isArray(task.scheduled_dates)
+        ? task.scheduled_dates
         : task.scheduled_dates || null,
-      est_minutes: task.time_to_complete || null,
-      tools_needed: task.tools_needed || null,
+      est_minutes: task.estimated_time_minutes || task.time_to_complete || null,
+      tools_needed: arrayToText(task.tools_needed), // Convert array to text
       no_techs_needed: task.number_of_technicians || 1,
-      consumables: task.consumables || null,
-      criticality: criticality // Add criticality field
+      consumables: arrayToText(task.consumables), // Convert array to text
+      criticality: task.criticality_rating || criticality // Use task's criticality or fallback
     }));
 
     const { data, error } = await supabase
@@ -529,19 +641,100 @@ export const generateAIPlan = async (planData) => {
     console.log('🔍 Backend URL:', BACKEND_URL);
     console.log('🔍 Full URL:', `${BACKEND_URL}/api/generate-ai-plan`);
 
+    // Calculate parent_asset_id if this is a child asset plan
+    let enrichedPlanData = { ...planData };
+
+    if (planData.child_asset_id && !planData.parent_asset_id) {
+      // Fetch parent_asset_id from child_assets table
+      const { data: childAssetData, error: childError } = await supabase
+        .from('child_assets')
+        .select('parent_asset_id')
+        .eq('id', planData.child_asset_id)
+        .single();
+
+      if (childError) {
+        console.warn('⚠️ Could not fetch parent_asset_id for child asset:', childError);
+      } else if (childAssetData?.parent_asset_id) {
+        enrichedPlanData.parent_asset_id = childAssetData.parent_asset_id;
+        console.log('📊 Enriched planData with parent_asset_id:', childAssetData.parent_asset_id);
+      }
+    }
+
     // Get current session for auth token
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
       throw new Error('Authentication required to generate AI plans');
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/generate-ai-plan`, {
+    // Add timeout handling (60 seconds for AI generation)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 60000); // 60 second timeout
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/generate-ai-plan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(enrichedPlanData),
+        signal: controller.signal, // Add abort signal for timeout
+      });
+
+      // Clear the timeout if request completes
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Backend API call failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('🔍 Backend response:', result);
+
+      if (!result.success) {
+        console.error('❌ Backend returned success=false:', result);
+        throw new Error('AI plan generation failed');
+      }
+
+      console.log('✅ AI plan generated successfully via backend');
+      return result.data;
+
+    } catch (fetchError) {
+      // Handle timeout specifically
+      if (fetchError.name === 'AbortError') {
+        throw new Error('AI plan generation timed out after 60 seconds. Please try again.');
+      }
+      throw fetchError;
+    }
+
+  } catch (error) {
+    console.error("❌ Error generating AI plan:", error);
+    throw error;
+  }
+};
+
+// ✅ Combined function using both direct DB + secure AI
+// ✅ Function for complete lead capture flow (public homepage)
+export const captureLeadWithPlan = async ({ planData, email, company, fullName, requestAccess }) => {
+  try {
+    console.log('🚀 Starting lead capture with PM plan generation');
+    
+    // Call backend endpoint that handles everything with service key
+    const response = await fetch(`${BACKEND_URL}/api/lead-capture`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ planData }),
+      body: JSON.stringify({ 
+        planData,
+        email,
+        company,
+        fullName,
+        requestAccess
+      }),
     });
 
     if (!response.ok) {
@@ -552,30 +745,27 @@ export const generateAIPlan = async (planData) => {
     const result = await response.json();
     
     if (!result.success) {
-      throw new Error('AI plan generation failed');
+      throw new Error('Lead capture failed');
     }
 
-    console.log('✅ AI plan generated successfully via backend');
-    return result.data;
+    console.log('✅ Lead captured and PM plan generated successfully');
+    return result;
     
   } catch (error) {
-    console.error("❌ Error generating AI plan:", error);
+    console.error("❌ Error in lead capture:", error);
     throw error;
   }
 };
 
-// ✅ Combined function using both direct DB + secure AI
+// ✅ Original function for authenticated users (DO NOT MODIFY)
 export const generatePMPlan = async (planData) => {
   try {
     console.log('🚀 Starting PM plan generation process');
-    
-    // 1. Save lead (direct to Supabase)
-    await savePMLead(planData.email || "test@example.com", planData.company || "Test Company");
-    
-    // 2. Save plan input (direct to Supabase)
+
+    // 1. Save plan input (direct to Supabase)
     const savedPlanInput = await savePMPlanInput(planData);
-    
-    // 3. Generate AI plan (secure backend call)
+
+    // 2. Generate AI plan (secure backend call)
     const aiGeneratedPlan = await generateAIPlan(planData);
     
     // 4. Save AI results with criticality (direct to Supabase)
@@ -604,11 +794,11 @@ export const fetchPMPlans = async () => {
           model,
           serial_number,
           category,
-          operating_hours,
           addtl_context,
           parent_assets!parent_asset_id (
             id,
-            name
+            name,
+            hours_run_per_week
           )
         )
       `)
@@ -1939,7 +2129,7 @@ export const generateParentPlan = async (parentAssetData) => {
         environment: parentAssetData.environment,
         additional_context: parentAssetData.additional_context,
         user_manual_content: parentAssetData.user_manual_content,
-        operating_hours: parentAssetData.operating_hours || '24/7',
+        hours_run_per_week: parentAssetData.hours_run_per_week || '168',
         pm_frequency: parentAssetData.pm_frequency || 'Standard',
         criticality: parentAssetData.criticality || 'Medium'
       })
@@ -1957,6 +2147,44 @@ export const generateParentPlan = async (parentAssetData) => {
     return result.plan;
   } catch (error) {
     console.error('🤖 Error generating parent plan:', error);
+    throw error;
+  }
+};
+
+// Extract asset details from user manual using AI
+export const extractAssetDetails = async (manualContent) => {
+  try {
+    console.log('🔍 Extracting asset details from manual');
+
+    // Get current session for auth token
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('Authentication required to extract asset details');
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/extract-asset-details`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        manual_content: manualContent
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('🔍 Asset details extraction failed:', response.status, errorText);
+      throw new Error(`Failed to extract asset details: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('🔍 Asset details extracted successfully:', result);
+
+    return result;
+  } catch (error) {
+    console.error('🔍 Error extracting asset details:', error);
     throw error;
   }
 };
@@ -1994,17 +2222,25 @@ export const createParentPMPlan = async (parentAssetId, siteId) => {
 export const createPMTasks = async (pmPlanId, tasks) => {
   try {
     console.log('📝 Creating PM tasks for plan:', pmPlanId);
-    
+
+    // Helper function to convert arrays to comma-separated text for text columns
+    const arrayToText = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter(v => v && v !== 'Not applicable').join(', ');
+      }
+      return value || null;
+    };
+
     const tasksToInsert = tasks.map(task => ({
       pm_plan_id: pmPlanId,
       task_name: task.task_name,
       maintenance_interval: task.maintenance_interval, // Store as string, parse when calculating due dates
-      instructions: task.instructions || [],
+      instructions: task.instructions || [], // Keep as array for jsonb[] column
       reason: task.reason,
       engineering_rationale: task.engineering_rationale,
-      safety_precautions: task.safety_precautions,
-      common_failures_prevented: task.common_failures_prevented,
-      tools_needed: task.tools_needed,
+      safety_precautions: arrayToText(task.safety_precautions), // Convert array to text
+      common_failures_prevented: arrayToText(task.common_failures_prevented), // Convert array to text
+      tools_needed: arrayToText(task.tools_needed), // Convert array to text
       est_minutes: parseInt(task.estimated_time_minutes) || 30,
       criticality: task.criticality_rating || 'Medium',
       created_at: new Date().toISOString()
@@ -2156,5 +2392,34 @@ export const suggestChildAssets = async (parentAssetData) => {
   } catch (error) {
     console.error('❌ Error requesting child asset suggestions:', error);
     throw error;
+  }
+};
+
+// Send PM Plan Generation Notification Email
+export const sendPMPlanNotification = async (notificationData) => {
+  try {
+    console.log('📧 Sending PM plan notification email...');
+
+    const response = await fetch(`${BACKEND_URL}/api/pm-plan-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(notificationData)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to send notification email');
+    }
+
+    console.log('✅ PM plan notification sent successfully:', result);
+    return result;
+
+  } catch (error) {
+    console.error('❌ Error sending PM plan notification:', error);
+    // Don't throw error - we don't want to break PM plan generation if email fails
+    return { success: false, error: error.message };
   }
 };

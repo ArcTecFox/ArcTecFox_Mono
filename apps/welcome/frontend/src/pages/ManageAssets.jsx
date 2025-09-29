@@ -3,9 +3,9 @@ import { Upload, Sparkles, Download, Edit, Trash2, FileText } from 'lucide-react
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/tooltip';
-import { 
-  supabase, 
-  isUserSiteAdmin, 
+import {
+  supabase,
+  isUserSiteAdmin,
   getUserAdminSites,
   fetchPMPlansByAsset,
   generatePMPlan,
@@ -14,7 +14,8 @@ import {
   generateParentPlan,
   createParentPMPlan,
   createPMTasks,
-  updateParentAssetSpares
+  updateParentAssetSpares,
+  extractAssetDetails
 } from '../api';
 import FileUpload from '../components/forms/FileUpload';
 import { createStorageService } from '../services/storageService';
@@ -26,13 +27,14 @@ import AssetTable from '../components/assets/AssetTable';
 import PMPlanManager from '../components/assets/PMPlanManager';
 import { LoadingModal, SuggestionsLoadingModal, ConfirmModal } from '../components/assets/AssetModals';
 import ParentPlanLoadingModal from '../components/assets/ParentPlanLoadingModal';
+import AssetDetailsModal from '../components/assets/AssetDetailsModal';
+import { extractTextFromFile, truncateTextForAPI } from '../utils/fileTextExtractor';
 
-const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, userSites: propUserSites }) => {
-  console.log('🏭 [MANAGE ASSETS] Component rendering - props changed?', { 
-    selectedSite, 
+const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propUserSites }) => {
+  console.log('🏭 [MANAGE ASSETS] Component rendering - props changed?', {
+    selectedSite,
     propUserSites: propUserSites?.length,
-    onAssetUpdate: typeof onAssetUpdate,
-    onPlanCreate: typeof onPlanCreate 
+    onAssetUpdate: typeof onAssetUpdate
   });
   
   const { user } = useAuth();
@@ -72,6 +74,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
     install_date: '',
     notes: '',
     cost_to_replace: '',
+    hours_run_per_week: '',
     site_id: ''
   });
   const [newChildAsset, setNewChildAsset] = useState({
@@ -83,7 +86,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
     purchase_date: '',
     install_date: '',
     notes: '',
-    operating_hours: '',
     addtl_context: '',
     plan_start_date: '',
     criticality: '',
@@ -126,6 +128,11 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
   
   // PM Plan generation state
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [pmPlanError, setPmPlanError] = useState(null);
+  const [pmPlanSuccess, setPmPlanSuccess] = useState(false);
+  const [pmTasksCreated, setPmTasksCreated] = useState(0);
+  const [pmPlanStatus, setPmPlanStatus] = useState('analyzing');
+  const [pmPlanProgress, setPmPlanProgress] = useState(0);
 
   // PM Plan status tracking for child assets
   const [childAssetPlanStatuses, setChildAssetPlanStatuses] = useState({});
@@ -145,6 +152,10 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
   const [parentPlanStatus, setParentPlanStatus] = useState('analyzing');
   const [parentPlanProgress, setParentPlanProgress] = useState(10);
   const [generatedParentPlan, setGeneratedParentPlan] = useState(null);
+  const [parentPlanError, setParentPlanError] = useState(null);
+  const [parentPlanSuccess, setParentPlanSuccess] = useState(false);
+  const [tasksCreated, setTasksCreated] = useState(0);
+  const [sparesIdentified, setSparesIdentified] = useState(0);
 
   // Custom confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -157,11 +168,28 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
     dangerous: true
   });
 
+  // Asset Details Modal state for enhanced parent creation
+  const [showAssetDetailsModal, setShowAssetDetailsModal] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedData, setExtractedData] = useState({
+    make: null,
+    model: null,
+    serial_number: null,
+    category: null
+  });
+  const [assetDetails, setAssetDetails] = useState({
+    make: '',
+    model: '',
+    serial_number: '',
+    category: ''
+  });
+  const [pendingParentAsset, setPendingParentAsset] = useState(null);
+
   useEffect(() => {
     console.log('🚀 [Component Mount] ManageAssets component mounted/updated');
     console.log('🚀 [Component Mount] Current URL:', window.location.pathname);
     console.log('🚀 [Component Mount] User exists:', !!user);
-    console.log('🚀 [Component Mount] Props:', { onAssetUpdate: !!onAssetUpdate, onPlanCreate: !!onPlanCreate });
+    console.log('🚀 [Component Mount] Props:', { onAssetUpdate: !!onAssetUpdate });
     
     if (user) {
       initializeComponent();
@@ -190,10 +218,48 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         .order('asset_name');
 
       if (error) throw error;
-      setAssetCategories(data || []);
+
+      // If we got data from dim_assets, use it
+      if (data && data.length > 0) {
+        setAssetCategories(data);
+        console.log(`✅ Loaded ${data.length} categories from dim_assets`);
+        return;
+      }
     } catch (err) {
-      console.error('Error loading asset categories:', err);
+      console.error('Error loading asset categories from dim_assets:', err);
     }
+
+    // Fallback to common asset categories if dim_assets is empty or inaccessible
+    const fallbackCategories = [
+      { asset_type_id: 'fb_1', asset_name: 'Pump' },
+      { asset_type_id: 'fb_2', asset_name: 'Motor' },
+      { asset_type_id: 'fb_3', asset_name: 'Compressor' },
+      { asset_type_id: 'fb_4', asset_name: 'Generator' },
+      { asset_type_id: 'fb_5', asset_name: 'HVAC' },
+      { asset_type_id: 'fb_6', asset_name: 'Conveyor' },
+      { asset_type_id: 'fb_7', asset_name: 'Gearbox' },
+      { asset_type_id: 'fb_8', asset_name: 'Transformer' },
+      { asset_type_id: 'fb_9', asset_name: 'Control Panel' },
+      { asset_type_id: 'fb_10', asset_name: 'Valve' },
+      { asset_type_id: 'fb_11', asset_name: 'Heat Exchanger' },
+      { asset_type_id: 'fb_12', asset_name: 'Boiler' },
+      { asset_type_id: 'fb_13', asset_name: 'Fan' },
+      { asset_type_id: 'fb_14', asset_name: 'Filter' },
+      { asset_type_id: 'fb_15', asset_name: 'Bearing' },
+      { asset_type_id: 'fb_16', asset_name: 'Electrical Equipment' },
+      { asset_type_id: 'fb_17', asset_name: 'Hydraulic System' },
+      { asset_type_id: 'fb_18', asset_name: 'Pneumatic System' },
+      { asset_type_id: 'fb_19', asset_name: 'Safety Equipment' },
+      { asset_type_id: 'fb_20', asset_name: 'Production Equipment' },
+      { asset_type_id: 'fb_21', asset_name: 'Material Handling' },
+      { asset_type_id: 'fb_22', asset_name: 'Process Equipment' },
+      { asset_type_id: 'fb_23', asset_name: 'Testing Equipment' },
+      { asset_type_id: 'fb_24', asset_name: 'Instrumentation' },
+      { asset_type_id: 'fb_25', asset_name: 'Lighting' }
+    ];
+
+    setAssetCategories(fallbackCategories);
+    console.log(`⚠️ Using fallback categories (${fallbackCategories.length} categories)`);
   };
 
   const checkUserPermissions = async () => {
@@ -389,8 +455,13 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
 
   const uploadManualForAsset = async (file, assetName, assetId, isParent = true, isModal = false, isEditModal = false) => {
     if (!file || !user) return null;
-    
+
     try {
+      // Extract text content from the file (new unified approach)
+      console.log(`📄 Extracting text from ${file.type} file: ${file.name}`);
+      const extractedText = await extractTextFromFile(file);
+      const truncatedText = truncateTextForAPI(extractedText, 20000);
+      console.log(`📄 Extracted ${extractedText.length} chars, truncated to ${truncatedText.length} chars`);
       if (isModal) {
         setUploadingModalFile(true);
       } else if (isEditModal) {
@@ -416,14 +487,15 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       const result = await storageService.uploadUserManual(file, assetName, user.id, siteId);
       
       if (result.success) {
-        // Save file metadata to loaded_manuals table
+        // Save file metadata and extracted text to loaded_manuals table
         const manualData = {
           [isParent ? 'parent_asset_id' : 'child_asset_id']: assetId,
           file_path: result.filePath,
           file_name: result.fileName,
           original_name: result.originalName,
           file_size: result.fileSize.toString(),
-          file_type: result.fileType
+          file_type: result.fileType,
+          extracted_text: truncatedText || null // Store the extracted text content
         };
         
         const { data, error } = await supabase
@@ -472,24 +544,44 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
   const generateParentPlanWorkflow = async (parentAsset) => {
     try {
       console.log('🤖 [Parent Plan] Starting parent plan generation for:', parentAsset.name);
-      
+
+      // Reset error and success states
+      setParentPlanError(null);
+      setParentPlanSuccess(false);
+      setTasksCreated(0);
+      setSparesIdentified(0);
+
       // Show parent plan modal
       setShowParentPlanModal(true);
       setParentPlanStatus('analyzing');
       setParentPlanProgress(10);
-      
+
       // Get site details
       const site = userSites.find(s => s.id === parentAsset.site_id);
-      
-      // Simulate progress updates
+
+      // Note: Backend uses site_location, not company_name, so no validation needed
+
+      // Simulate progress updates with proper cleanup
+      const timers = [];
+
       const progressTimer = setInterval(() => {
         setParentPlanProgress(prev => Math.min(prev + 10, 90));
       }, 1000);
-      
-      setTimeout(() => setParentPlanStatus('generating'), 3000);
-      setTimeout(() => setParentPlanStatus('creating'), 6000);
-      setTimeout(() => setParentPlanStatus('saving'), 9000);
-      
+      timers.push(progressTimer);
+
+      const statusTimer1 = setTimeout(() => setParentPlanStatus('generating'), 3000);
+      const statusTimer2 = setTimeout(() => setParentPlanStatus('creating'), 6000);
+      const statusTimer3 = setTimeout(() => setParentPlanStatus('saving'), 9000);
+      timers.push(statusTimer1, statusTimer2, statusTimer3);
+
+      // Cleanup function for all timers
+      const cleanupTimers = () => {
+        clearInterval(progressTimer);
+        clearTimeout(statusTimer1);
+        clearTimeout(statusTimer2);
+        clearTimeout(statusTimer3);
+      };
+
       try {
         // Call parent plan generation API
         const planInput = {
@@ -500,7 +592,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
           site_location: site?.name || 'Unknown',
           environment: site?.environment || 'Standard industrial',
           additional_context: parentAsset.notes,
-          operating_hours: '24/7',
           pm_frequency: 'Standard',
           criticality: 'Medium'
         };
@@ -530,24 +621,42 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         }
         
         // Complete progress
-        clearInterval(progressTimer);
+        cleanupTimers();
         setParentPlanProgress(100);
-        
-        // Brief success pause
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+
+        // Set success metrics
+        const tasksCount = generatedPlan?.maintenance_tasks?.length || 2;
+        const sparesCount = generatedPlan?.critical_spare_parts?.length || 0;
+        setTasksCreated(tasksCount);
+        setSparesIdentified(sparesCount);
+
+        // Show success state
+        setParentPlanSuccess(true);
+
+        // Brief success pause to show the celebration
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Hide modal and continue workflow
+        setShowParentPlanModal(false);
+        setParentPlanSuccess(false); // Reset for next time
+
+        // Continue to child asset suggestions
+        console.log('🤖 [Workflow] Transitioning to child asset suggestions...');
+        await requestChildAssetSuggestions(parentAsset);
+
       } catch (error) {
         console.error('🤖 [Parent Plan ERROR]:', error);
-        clearInterval(progressTimer);
-        // Continue to child suggestions even if parent plan fails
+        cleanupTimers();
+
+        // Set error state with details
+        setParentPlanError({
+          message: error.message || 'Failed to generate maintenance plan',
+          details: error.response?.data?.detail || error.toString()
+        });
+
+        // Don't automatically close modal on error - let user retry or close
+        return;
       }
-      
-      // Hide parent plan modal
-      setShowParentPlanModal(false);
-      
-      // Continue to child asset suggestions
-      console.log('🤖 [Workflow] Transitioning to child asset suggestions...');
-      await requestChildAssetSuggestions(parentAsset);
       
     } catch (error) {
       console.error('🤖 [Workflow ERROR]:', error);
@@ -558,98 +667,146 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
 
   const handleCreateParentAsset = async (e) => {
     e.preventDefault();
-    
+
     // Validate file type if a manual is attached
     if (parentManualFile) {
       const supportedTypes = ['.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
       const fileName = parentManualFile.name.toLowerCase();
       const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
-      
+
       if (!supportedTypes.includes(fileExtension)) {
         setError(`Unsupported file type: ${fileExtension}. Supported file types are: PDF, DOC, DOCX, TXT, JPG, JPEG, PNG, GIF`);
         setParentFileUploadError(`File type ${fileExtension} is not supported`);
-        return; // Stop the creation process
+        return;
       }
     }
-    
-    // Debug logging to track different contexts
-    console.log('🔍 [Parent Asset Creation] Starting...');
-    console.log('🔍 [Context] Current URL:', window.location.pathname);
-    console.log('🔍 [Context] Props received:', { onAssetUpdate: !!onAssetUpdate, onPlanCreate: !!onPlanCreate });
-    console.log('🔍 [Context] User sites available:', userSites.length);
-    console.log('🔍 [Context] Parent manual file attached:', !!parentManualFile);
-    console.log('🔍 [Context] Component state:', {
-      loadingSuggestions,
-      showSuggestionsModal,
-      suggestedAssets: suggestedAssets.length,
-      createdParentAsset: !!createdParentAsset
-    });
-    
+
     if (userSites.length === 0) {
-      console.error('🔍 [Error] No user sites available');
       setError('You do not have access to any sites');
       return;
     }
 
     if (!newParentAsset.name.trim()) {
-      console.error('🔍 [Error] Asset name is empty');
       setError('Asset name is required');
       return;
     }
 
     if (!newParentAsset.site_id) {
-      console.error('🔍 [Error] Site ID is missing');
       setError('Site selection is required');
       return;
     }
 
-    console.log('🔍 [Validation] All checks passed, proceeding with creation');
+    // Store the base asset data for later use
+    setPendingParentAsset({
+      ...newParentAsset,
+      purchase_date: newParentAsset.purchase_date || null,
+      install_date: newParentAsset.install_date || null,
+      cost_to_replace: newParentAsset.cost_to_replace ? parseFloat(newParentAsset.cost_to_replace) || null : null
+    });
+
+    // Reset the extracted data for new asset
+    setExtractedData({
+      make: null,
+      model: null,
+      serial_number: null,
+      category: null
+    });
+    setAssetDetails({
+      make: '',
+      model: '',
+      serial_number: '',
+      category: ''
+    });
+
+    // Check if manual was provided and extract details
+    if (parentManualFile) {
+      console.log('🔍 Manual provided, extracting details...');
+      setShowAssetDetailsModal(true);
+      setExtracting(true);
+
+      try {
+        // Extract readable text from file (handles PDFs, DOCs, etc.)
+        console.log(`🔍 Extracting text from ${parentManualFile.type} file: ${parentManualFile.name}`);
+        const extractedText = await extractTextFromFile(parentManualFile);
+
+        // Truncate content for API (20KB limit for better processing)
+        const truncatedContent = truncateTextForAPI(extractedText, 20000);
+
+        console.log(`🔍 Extracted text: ${extractedText.length} chars, sending: ${truncatedContent.length} chars`);
+
+        // Call extraction API
+        const extractionResult = await extractAssetDetails(truncatedContent);
+
+        // Update states with extracted data
+        setExtractedData(extractionResult.extracted || {});
+        setAssetDetails({
+          make: extractionResult.extracted?.make || '',
+          model: extractionResult.extracted?.model || '',
+          serial_number: extractionResult.extracted?.serial_number || '',
+          category: extractionResult.extracted?.category || ''
+        });
+
+        setExtracting(false);
+      } catch (error) {
+        console.error('Extraction failed:', error);
+        setExtracting(false);
+        // Continue with manual entry on extraction failure
+      }
+    } else {
+      // No manual provided, show modal for manual entry
+      console.log('🔍 No manual provided, showing manual entry form...');
+      setShowAssetDetailsModal(true);
+    }
+  };
+
+
+  // Function to handle asset details confirmation
+  const handleAssetDetailsConfirm = async () => {
+    if (!pendingParentAsset) return;
+
     try {
-      // Fix date handling to prevent timezone issues
-      // Ensure dates are sent as pure YYYY-MM-DD strings or null
-      const assetData = {
-        ...newParentAsset,
-        purchase_date: newParentAsset.purchase_date ? newParentAsset.purchase_date : null,
-        install_date: newParentAsset.install_date ? newParentAsset.install_date : null,
-        cost_to_replace: newParentAsset.cost_to_replace ? parseFloat(newParentAsset.cost_to_replace) || null : null,
+      // Combine pending asset data with details from modal
+      const completeAssetData = {
+        ...pendingParentAsset,
+        make: assetDetails.make || null,
+        model: assetDetails.model || null,
+        serial_number: assetDetails.serial_number || null,
+        category: assetDetails.category || null,
         status: 'active',
         created_by: user.id
       };
-      
-      console.log('🔍 [Database] Inserting parent asset with data:', assetData);
+
+      console.log('🔍 Creating parent asset with complete data:', completeAssetData);
+
       const { data, error } = await supabase
         .from('parent_assets')
-        .insert([assetData])
+        .insert([completeAssetData])
         .select();
 
       if (error) {
-        console.error('🔍 [Database Error] Failed to insert parent asset:', error);
+        console.error('Failed to create parent asset:', error);
         throw error;
       }
 
       const createdAsset = data[0];
-      console.log('🔍 [Success] Parent asset created with ID:', createdAsset.id);
-      console.log('🔍 [Success] Created asset data:', createdAsset);
-      
-      // Upload manual if provided (don't let upload failure prevent child asset suggestions)
+      console.log('✅ Parent asset created:', createdAsset);
+
+      // Upload manual if provided
       if (parentManualFile) {
-        console.log('🔍 [File Upload] Attempting to upload manual...');
         try {
-          await uploadManualForAsset(parentManualFile, newParentAsset.name, createdAsset.id, true);
-          console.log('🔍 [File Upload] Manual uploaded successfully');
+          await uploadManualForAsset(parentManualFile, pendingParentAsset.name, createdAsset.id, true);
+          console.log('✅ Manual uploaded successfully');
         } catch (uploadError) {
-          console.error('🔍 [File Upload Error] File upload failed, but continuing with asset creation:', uploadError);
+          console.error('Manual upload failed:', uploadError);
           setParentFileUploadError(`Failed to upload manual: ${uploadError.message}`);
         }
-      } else {
-        console.log('🔍 [File Upload] No manual file attached, skipping upload');
       }
 
-      console.log('🔍 [Loading] Refreshing parent assets list...');
+      // Refresh parent assets list
       await loadParentAssets();
-      console.log('🔍 [Loading] Parent assets list refreshed');
-      
-      // Reset form immediately after successful creation
+
+      // Close modal and reset states
+      setShowAssetDetailsModal(false);
       setShowAddParentAsset(false);
       setNewParentAsset({
         name: '',
@@ -661,17 +818,21 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         install_date: '',
         notes: '',
         cost_to_replace: '',
+        hours_run_per_week: '',
         site_id: userSites.length === 1 ? userSites[0].id : ''
       });
       setParentManualFile(null);
       setParentFileUploadError(null);
+      setPendingParentAsset(null);
       setError(null);
-      
-      // Store created asset for later use
-      const assetWithEnvironment = {...createdAsset, environment: userSites.find(s => s.id === createdAsset.site_id)?.environment};
-      console.log('🔍 [Workflow] Starting parent plan generation workflow for:', assetWithEnvironment);
+
+      // Store created asset and start parent plan generation
+      const assetWithEnvironment = {
+        ...createdAsset,
+        environment: userSites.find(s => s.id === createdAsset.site_id)?.environment
+      };
       setCreatedParentAsset(assetWithEnvironment);
-      
+
       // Start parent plan generation workflow
       await generateParentPlanWorkflow(createdAsset);
     } catch (err) {
@@ -741,7 +902,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         purchase_date: newChildAsset.purchase_date ? newChildAsset.purchase_date : null,
         install_date: newChildAsset.install_date ? newChildAsset.install_date : null,
         notes: newChildAsset.notes,
-        operating_hours: newChildAsset.operating_hours || null,
         addtl_context: newChildAsset.addtl_context || null,
         plan_start_date: newChildAsset.plan_start_date ? newChildAsset.plan_start_date : null,
         criticality: newChildAsset.criticality || null,
@@ -759,13 +919,17 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       if (error) throw error;
 
       const createdAsset = data[0];
-      
+
       // Upload manual if provided
       if (childManualFile) {
         await uploadManualForAsset(childManualFile, newChildAsset.name, createdAsset.id, false);
       }
 
-      await loadChildAssets(selectedParentAsset.id);
+      // Add the new asset to the state instead of reloading everything
+      setChildAssets(prevAssets => [...prevAssets, createdAsset]);
+
+      // Just update the PM plan statuses for the new asset
+      await loadChildAssetPlanStatuses([...childAssets, createdAsset]);
       setShowAddChildAsset(false);
       setNewChildAsset({
         name: '',
@@ -776,7 +940,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         purchase_date: '',
         install_date: '',
         notes: '',
-        operating_hours: '',
         addtl_context: '',
         plan_start_date: '',
         criticality: '',
@@ -898,7 +1061,13 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         await recalculateTaskSignoffDates(assetId, dataToUpdate.plan_start_date);
       }
 
-      await loadChildAssets(selectedParentAsset.id);
+      // Update the specific child asset in state instead of reloading all
+      setChildAssets(prevAssets =>
+        prevAssets.map(asset =>
+          asset.id === childAssetId ? { ...asset, ...childAssetData } : asset
+        )
+      );
+
       if (!updates) {
         // Only reset inline editing state if not called from modal
         setEditingChildAsset(null);
@@ -1031,7 +1200,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       purchase_date: formatDateForInput(asset.purchase_date),
       install_date: formatDateForInput(asset.install_date),
       notes: asset.notes || '',
-      cost_to_replace: asset.cost_to_replace || ''
+      cost_to_replace: asset.cost_to_replace || '',
+      hours_run_per_week: asset.hours_run_per_week || ''
     };
     
     // Include make, model, serial_number for both parent and child assets
@@ -1044,7 +1214,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       // For child assets, map serial_no database field to serial_number frontend field
       modalData.serial_number = asset.serial_no || '';
       // Include additional fields for child assets
-      modalData.operating_hours = asset.operating_hours || '';
       modalData.addtl_context = asset.addtl_context || '';
       modalData.plan_start_date = formatDateForInput(asset.plan_start_date);
       modalData.criticality = asset.criticality || '';
@@ -1102,7 +1271,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
           delete dataToUpdate.serial_number; // Remove the frontend field name
         }
         // Ensure new fields are included with proper null handling
-        dataToUpdate.operating_hours = dataToUpdate.operating_hours || null;
         dataToUpdate.addtl_context = dataToUpdate.addtl_context || null;
         dataToUpdate.plan_start_date = dataToUpdate.plan_start_date ? dataToUpdate.plan_start_date : null;
       }
@@ -1296,7 +1464,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
 
         if (error) throw error;
 
-        await loadChildAssets(selectedParentAsset.id);
+        // Remove the deleted asset from state instead of reloading
+        setChildAssets(prevAssets => prevAssets.filter(asset => asset.id !== assetId));
         setSelectedChildAssetForPlan(null);
         setError(null);
       } catch (err) {
@@ -1581,39 +1750,51 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
 
   // Load PM plan statuses for all child assets
   const loadChildAssetPlanStatuses = async (childAssetsList) => {
-    const statuses = {};
-    
-    await Promise.all(
-      childAssetsList.map(async (childAsset) => {
-        try {
-          const { data: plans, error } = await supabase
-            .from('pm_plans')
-            .select('id, status')
-            .eq('child_asset_id', childAsset.id)
-            .eq('status', 'Current')
-            .limit(1);
-          
-          if (error) {
-            console.error('Error checking PM plan status for child asset:', childAsset.id, error);
-            statuses[childAsset.id] = false;
-          } else {
-            const hasPlan = plans && plans.length > 0;
-            statuses[childAsset.id] = hasPlan;
-            if (plans && plans.length > 0) {
-              console.log(`✅ ${childAsset.name}: Has Current PM Plan`, { id: plans[0].id, status: plans[0].status });
-            } else {
-              console.log(`❌ ${childAsset.name}: No Current PM Plan found`);
-            }
-          }
-        } catch (error) {
-          console.error('Error checking PM plan status for child asset:', childAsset.id, error);
-          statuses[childAsset.id] = false;
-        }
-      })
-    );
-    
-    console.log('Final PM Plan statuses:', statuses);
-    setChildAssetPlanStatuses(statuses);
+    if (!childAssetsList || childAssetsList.length === 0) {
+      setChildAssetPlanStatuses({});
+      return;
+    }
+
+    try {
+      // Get all child asset IDs in a single array
+      const childAssetIds = childAssetsList.map(asset => asset.id);
+
+      // Single query to get all PM plans for all child assets at once
+      const { data: plans, error } = await supabase
+        .from('pm_plans')
+        .select('id, status, child_asset_id')
+        .in('child_asset_id', childAssetIds)
+        .eq('status', 'Current');
+
+      if (error) {
+        console.error('Error checking PM plan statuses:', error);
+        // Set all to false on error
+        const statuses = {};
+        childAssetIds.forEach(id => { statuses[id] = false; });
+        setChildAssetPlanStatuses(statuses);
+        return;
+      }
+
+      // Create a map of child_asset_id -> has plan
+      const statuses = {};
+
+      // Initialize all assets as having no plan
+      childAssetIds.forEach(id => { statuses[id] = false; });
+
+      // Mark assets that have plans
+      if (plans && plans.length > 0) {
+        plans.forEach(plan => {
+          statuses[plan.child_asset_id] = true;
+        });
+      }
+
+      setChildAssetPlanStatuses(statuses);
+    } catch (error) {
+      console.error('Error in loadChildAssetPlanStatuses:', error);
+      const statuses = {};
+      childAssetsList.forEach(asset => { statuses[asset.id] = false; });
+      setChildAssetPlanStatuses(statuses);
+    }
   };
 
   // Handle child asset click to display details and load PM plans
@@ -1716,11 +1897,12 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
 
     try {
       setError(null);
-      
+      const newlyCreatedAssets = []; // Track newly created assets
+
       for (const indexStr of selectedIndices) {
         const index = parseInt(indexStr);
         const suggestion = suggestedAssets[index];
-        
+
         // Create child asset with AI-suggested data
         const parentAsset = createdParentAsset || selectedParentAsset;
         const childAssetData = {
@@ -1737,7 +1919,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
             suggestion.common_failures?.length > 0 ? `Common Failures: ${suggestion.common_failures.join(', ')}` : '',
             suggestion.additional_notes ? `Additional Notes: ${suggestion.additional_notes}` : ''
           ].filter(Boolean).join('\n\n') || null,
-          operating_hours: null,
           addtl_context: null,
           criticality: suggestion.criticality_level || null, // Store criticality in dedicated field
           cost_to_replace: null, // User will fill this in later
@@ -1748,24 +1929,40 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
         };
 
         console.log('Inserting child asset data:', childAssetData);
-        
-        const { error } = await supabase
+
+        const { data: createdAsset, error } = await supabase
           .from('child_assets')
-          .insert([childAssetData]);
+          .insert([childAssetData])
+          .select()
+          .single();
 
         if (error) {
           console.error('Error creating suggested child asset:', error);
           console.error('Failed data:', childAssetData);
           throw new Error(`Failed to create child asset: ${suggestion.name} - ${error.message}`);
         }
+
+        // Add the newly created asset to our tracking array
+        if (createdAsset) {
+          newlyCreatedAssets.push(createdAsset);
+        }
       }
 
-      // Reload child assets and close modal
+      // Update the state locally without reloading everything
       const parentId = createdParentAsset?.id || selectedParentAsset.id;
       if (createdParentAsset) {
         setSelectedParentAsset(createdParentAsset);
       }
-      await loadChildAssets(parentId);
+
+      // Add the newly created assets to the existing childAssets state
+      if (newlyCreatedAssets.length > 0) {
+        setChildAssets(prevAssets => [...prevAssets, ...newlyCreatedAssets]);
+      }
+
+      // Update the PM plan statuses for all child assets (including new ones)
+      await loadChildAssetPlanStatuses([...childAssets, ...newlyCreatedAssets]);
+
+      // Close modal and reset state
       setShowSuggestionsModal(false);
       setSuggestedAssets([]);
       setSelectedSuggestions({});
@@ -1779,8 +1976,32 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
   // Handle Create/Update PM Plan (matching PMPlanner process exactly)
   const handleCreateUpdatePMPlan = async (childAsset) => {
     try {
+      // Reset states
+      setPmPlanError(null);
+      setPmPlanSuccess(false);
+      setPmTasksCreated(0);
+      setPmPlanStatus('analyzing');
+      setPmPlanProgress(10);
+
       setGeneratingPlan(true);
       setError(null);
+
+      // Simulate progress updates
+      const progressTimer = setInterval(() => {
+        setPmPlanProgress(prev => Math.min(prev + 15, 90));
+      }, 1000);
+
+      const statusTimer1 = setTimeout(() => setPmPlanStatus('generating'), 2000);
+      const statusTimer2 = setTimeout(() => setPmPlanStatus('creating'), 4000);
+      const statusTimer3 = setTimeout(() => setPmPlanStatus('saving'), 6000);
+
+      // Cleanup function
+      const cleanupTimers = () => {
+        clearInterval(progressTimer);
+        clearTimeout(statusTimer1);
+        clearTimeout(statusTimer2);
+        clearTimeout(statusTimer3);
+      };
       
       // If updating existing plan, mark it as 'Replaced' and clean up task_signoffs
       if (existingPlans.length > 0) {
@@ -1837,66 +2058,25 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       
       // Prepare form data similar to PMPlanner
       const formData = {
-        // Core asset identification
+        // Core asset identification (required by PMPlanInput)
         name: childAsset.name,
         model: childAsset.model || '',
         serial: childAsset.serial_no || '',
         category: childAsset.category || '',
-        
-        // PM planning fields
-        hours: childAsset.operating_hours?.toString() || '',
+
+        // PM planning fields (required by PMPlanInput)
+        hours: parentAsset.hours_run_per_week?.toString() || '0',
+        frequency: 'Standard', // Default value
+        criticality: childAsset.criticality || 'Medium', // Default value
         additional_context: childAsset.addtl_context || '',
-        environment: parentAsset.environment || '', // Inherited from parent
-        date_of_plan_start: childAsset.plan_start_date || '',
-        
-        // Asset hierarchy information
-        child_asset_id: childAsset.id,
+
+        // Optional fields for PMPlanInput
+        parent_asset: parentAsset.name || null,
+        child_asset: childAsset.name || null,
+        site_location: parentAsset.sites?.name || null,
+        environment: parentAsset.environment || null,
         parent_asset_id: parentAsset.id,
-        
-        // Asset details for AI context
-        purchase_date: childAsset.purchase_date || '',
-        install_date: childAsset.install_date || '',
-        asset_notes: childAsset.notes || '',
-        
-        // Site and user information
-        email: user?.email || "asset-management@example.com",
-        company: parentAsset.sites?.companies?.name || "Unknown Company",
-        site_name: parentAsset.sites?.name || "Unknown Site",
-        siteId: parentAsset.site_id,
-        
-        // Manual information
-        userManual: childManuals[0] || null,
-        manuals: childManuals,
-        manual_count: childManuals.length,
-        
-        // Complete asset context for AI
-        asset_full_details: {
-          parent_asset: {
-            id: parentAsset.id,
-            name: parentAsset.name,
-            model: parentAsset.model,
-            serial_number: parentAsset.serial_number,
-            category: parentAsset.category,
-            purchase_date: parentAsset.purchase_date,
-            install_date: parentAsset.install_date,
-            notes: parentAsset.notes,
-            environment: parentAsset.environment || ''
-          },
-          child_asset: {
-            id: childAsset.id,
-            name: childAsset.name,
-            model: childAsset.model,
-            serial_number: childAsset.serial_no,
-            category: childAsset.category,
-            purchase_date: childAsset.purchase_date,
-            install_date: childAsset.install_date,
-            notes: childAsset.notes,
-            operating_hours: childAsset.operating_hours,
-            addtl_context: childAsset.addtl_context,
-            plan_start_date: childAsset.plan_start_date,
-            parent_environment: parentAsset.environment || ''
-          }
-        }
+        child_asset_id: childAsset.id
       };
       
       console.log('Generating PM plan for child asset:', formData);
@@ -1906,32 +2086,47 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       
       // Call the AI API to generate the plan
       const aiGeneratedPlan = await generatePMPlan(formData);
-      
+
       if (!aiGeneratedPlan) {
         throw new Error('No plan generated from API');
       }
-      
+
       console.log('PM Plan generated successfully:', aiGeneratedPlan);
-      
+
+      // Clean up timers before success
+      cleanupTimers();
+      setPmPlanProgress(100);
+
+      // Set success metrics
+      const tasksCount = Array.isArray(aiGeneratedPlan) ? aiGeneratedPlan.length : 0;
+      setPmTasksCreated(tasksCount);
+      setPmPlanSuccess(true);
+
+      // Brief pause to show success state
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Reload the plans to show the new one
       await loadPMPlansForAsset(selectedParentAsset.id, childAsset.id);
-      
+
       // Refresh PM plan statuses for all child assets
       await loadChildAssetPlanStatuses(childAssets);
-      
-      // Trigger task view and calendar refresh if callback provided
-      if (onPlanCreate) {
-        onPlanCreate();
-      }
-      
-      // Show success message
+
+      // PM plan creation completed - reset states
+      setGeneratingPlan(false);
+      setPmPlanSuccess(false);
+      setPmPlanError(null);
       setError(null);
-      
+
     } catch (error) {
       console.error('Error creating/updating PM plan:', error);
+
+      // Set error state for modal
+      setPmPlanError({
+        message: error.message || 'Failed to create/update PM plan',
+        details: error.response?.data?.detail || error.toString()
+      });
+
       setError('Failed to create/update PM plan: ' + error.message);
-    } finally {
-      setGeneratingPlan(false);
     }
   };
 
@@ -2049,50 +2244,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Make
-                  </label>
-                  <input
-                    type="text"
-                    value={newParentAsset.make}
-                    onChange={(e) => setNewParentAsset(prev => ({ ...prev, make: e.target.value }))}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Model
-                  </label>
-                  <input
-                    type="text"
-                    value={newParentAsset.model}
-                    onChange={(e) => setNewParentAsset(prev => ({ ...prev, model: e.target.value }))}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Serial Number
-                  </label>
-                  <input
-                    type="text"
-                    value={newParentAsset.serial_number}
-                    onChange={(e) => setNewParentAsset(prev => ({ ...prev, serial_number: e.target.value }))}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category
-                  </label>
-                  <input
-                    type="text"
-                    value={newParentAsset.category}
-                    onChange={(e) => setNewParentAsset(prev => ({ ...prev, category: e.target.value }))}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Purchase Date
                   </label>
                   <input
@@ -2124,6 +2275,18 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                   value={newParentAsset.cost_to_replace}
                   onChange={(e) => setNewParentAsset(prev => ({ ...prev, cost_to_replace: e.target.value }))}
                   placeholder="0.00"
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hours Run Per Week
+                </label>
+                <input
+                  type="number"
+                  value={newParentAsset.hours_run_per_week}
+                  onChange={(e) => setNewParentAsset(prev => ({ ...prev, hours_run_per_week: e.target.value }))}
+                  placeholder="Hours per week"
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -2175,6 +2338,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                       install_date: '',
                       notes: '',
                       cost_to_replace: '',
+                      hours_run_per_week: '',
                       site_id: userSites.length === 1 ? userSites[0].id : ''
                     });
                     setParentManualFile(null);
@@ -2328,7 +2492,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                           <td className="px-3 py-1.5 text-xs font-medium text-blue-800 uppercase tracking-wide">
                             Criticality
                           </td>
-                          <td className="px-3 py-1.5 text-xs font-medium text-blue-800 uppercase tracking-wide">
+                          <td className="px-3 py-1.5 text-xs font-medium text-blue-800 uppercase tracking-wide text-center">
                             PM Plan
                           </td>
                           <td className="px-3 py-1.5 text-xs font-medium text-blue-800 uppercase tracking-wide">
@@ -2372,7 +2536,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                               {childAsset.criticality || 'Medium'}
                             </div>
                           </td>
-                          <td className="px-3 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 whitespace-nowrap text-center">
                             <div className="text-sm flex justify-center">
                               {childAssetPlanStatuses[childAsset.id] ? (
                                 <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 text-green-600 rounded-full">
@@ -2390,9 +2554,9 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleExportChildAssetPDF(childAsset);
@@ -2405,12 +2569,12 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                                     <p>Export PDF</p>
                                   </TooltipContent>
                                 </Tooltip>
-                                
+
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         openEditModal(childAsset, false);
@@ -2423,12 +2587,12 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                                     <p>Edit asset</p>
                                   </TooltipContent>
                                 </Tooltip>
-                                
+
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleDeleteChildAsset(childAsset.id);
@@ -2464,7 +2628,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                                     purchase_date: selectedParentAsset.purchase_date || '',
                                     install_date: selectedParentAsset.install_date || '',
                                     notes: '',
-                                    operating_hours: '',
                                     addtl_context: '',
                                     plan_start_date: '',
                                     criticality: '',
@@ -2610,18 +2773,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                                   </div>
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Operating Hours
-                                    </label>
-                                    <input
-                                      type="number"
-                                      value={newChildAsset.operating_hours}
-                                      onChange={(e) => setNewChildAsset(prev => ({ ...prev, operating_hours: e.target.value }))}
-                                      placeholder="Hours per day"
-                                      className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Plan Start Date
                                     </label>
                                     <input
@@ -2722,7 +2873,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                                         purchase_date: '',
                                         install_date: '',
                                         notes: '',
-                                        operating_hours: '',
                                         addtl_context: '',
                                         plan_start_date: '',
                                         criticality: '',
@@ -2817,12 +2967,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">{selectedChildAssetForPlan.category || '-'}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Operating Hours</label>
-                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">
-                    {selectedChildAssetForPlan.operating_hours ? `${selectedChildAssetForPlan.operating_hours} hrs/day` : '-'}
-                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Criticality</label>
@@ -3180,20 +3324,22 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+                {editModalIsParent && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Hours Run Per Week
+                    </label>
+                    <input
+                      type="number"
+                      value={editModalData.hours_run_per_week}
+                      onChange={(e) => setEditModalData(prev => ({ ...prev, hours_run_per_week: e.target.value }))}
+                      placeholder="Hours per week"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                )}
                 {!editModalIsParent && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Operating Hours
-                      </label>
-                      <input
-                        type="number"
-                        value={editModalData.operating_hours}
-                        onChange={(e) => setEditModalData(prev => ({ ...prev, operating_hours: e.target.value }))}
-                        placeholder="Hours per day"
-                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Plan Start Date
@@ -3619,17 +3765,69 @@ const ManageAssets = React.memo(({ onAssetUpdate, onPlanCreate, selectedSite, us
       />
 
       {/* Loading Modal for Parent Plan Generation */}
-      <ParentPlanLoadingModal 
-        isOpen={showParentPlanModal} 
+      <ParentPlanLoadingModal
+        isOpen={showParentPlanModal}
         status={parentPlanStatus}
         progress={parentPlanProgress}
+        error={parentPlanError}
+        success={parentPlanSuccess}
+        tasksCreated={tasksCreated}
+        sparesIdentified={sparesIdentified}
+        onRetry={() => {
+          // Clear error and retry
+          setParentPlanError(null);
+          if (createdParentAsset) {
+            generateParentPlanWorkflow(createdParentAsset);
+          }
+        }}
+        onClose={() => {
+          // Close modal and reset states
+          setShowParentPlanModal(false);
+          setParentPlanError(null);
+          setParentPlanSuccess(false);
+        }}
+      />
+
+      {/* Asset Details Modal for Enhanced Parent Creation */}
+      <AssetDetailsModal
+        show={showAssetDetailsModal}
+        onClose={() => {
+          setShowAssetDetailsModal(false);
+          setExtracting(false);
+        }}
+        extracting={extracting}
+        extractedData={extractedData}
+        assetDetails={assetDetails}
+        setAssetDetails={setAssetDetails}
+        onConfirm={handleAssetDetailsConfirm}
+        manualProvided={!!parentManualFile}
       />
 
       {/* Loading Modal for AI Suggestions */}
       <SuggestionsLoadingModal isOpen={loadingSuggestions} />
 
-      {/* Loading Modal for PM Plan Generation */}
-      <LoadingModal isOpen={generatingPlan} />
+      {/* Enhanced Loading Modal for PM Plan Generation */}
+      <LoadingModal
+        isOpen={generatingPlan}
+        error={pmPlanError}
+        success={pmPlanSuccess}
+        tasksCreated={pmTasksCreated}
+        progress={pmPlanProgress}
+        status={pmPlanStatus}
+        onRetry={() => {
+          // Clear error and retry with the last selected child asset
+          setPmPlanError(null);
+          if (selectedChildAssetForPlan) {
+            handleCreateUpdatePMPlan(selectedChildAssetForPlan);
+          }
+        }}
+        onClose={() => {
+          // Close modal and reset states
+          setGeneratingPlan(false);
+          setPmPlanError(null);
+          setPmPlanSuccess(false);
+        }}
+      />
     </div>
   );
 });

@@ -23,7 +23,7 @@ class PMPlanInput(BaseModel):
     model: str
     serial: str
     category: str
-    hours: str            # Operating hours (e.g., "24/7")
+    hours: str            # Cumulative runtime hours since installation (calculated value)
     frequency: str
     criticality: str
     additional_context: str  # Any special notes or focus points for the plan
@@ -31,6 +31,8 @@ class PMPlanInput(BaseModel):
     child_asset: Optional[str] = None    # Child asset name
     site_location: Optional[str] = None  # e.g., "Dallas Plant, Line 3"
     environment: Optional[str] = None    # e.g., "High humidity, corrosive, outdoor, Class I Div 2"
+    parent_asset_id: Optional[str] = None  # Parent asset ID for hours calculation
+    child_asset_id: Optional[str] = None   # Child asset ID for hours calculation
 
 
 # =================
@@ -61,20 +63,32 @@ UNIVERSAL CONTEXT (inherits unless overridden at task level)
 - Child Asset: {child_asset}
 - Site Location: {site_location}
 - Environment: {environment}
-- Operating Hours: {hours}
+- Cumulative Runtime Hours: {hours} (calculated as weeks since installation × parent asset's weekly operating hours)
 - PM Frequency: {frequency}
 - Criticality: {criticality}
 - Additional Context: {addl}
 - Plan Start Date: {today}
 
+IMPORTANT - Runtime Hours Context:
+The provided runtime hours represent the total accumulated operating hours since the child asset's installation date. This value is calculated by multiplying the number of weeks between the installation date and today by the parent asset's weekly operating hours. Use this cumulative runtime to inform maintenance intervals based on actual equipment usage rather than calendar time alone. Higher cumulative hours may require more frequent maintenance intervals to prevent wear-related failures.
+
 POLICIES (MANDATORY)
 - If the system has manufacturer manual content available, treat it as primary. Extract concrete instructions/intervals/specs/lubricants/part numbers and cite exact sections/pages in "citations".
+- CRITICAL RULE - Manual Text Usage: When manual content is provided:
+  1. You MUST extract and include specific maintenance procedures, part numbers, torque specifications, intervals, and step-by-step instructions DIRECTLY from the provided manual text
+  2. You are STRICTLY FORBIDDEN from using phrases like "refer to manual", "consult documentation", "see user manual", or ANY similar reference phrases
+  3. Each maintenance task MUST incorporate the actual details found in the manual text
+  4. Include exact specifications: part numbers, torque values, clearances, pressures, fluid types, quantities
+  5. Include step-by-step procedures as found in the manual
+  6. Self-check: Before outputting any task, verify you have NOT used any phrase that directs users to external documentation when manual text was provided. Instead, ensure you've included the actual information from the manual.
 - If no manual content is available, use recognized standards/suppliers (ISO/ASTM/API; SKF/Mobil/Shell). Cite them. Never write “refer to the manual”; always provide actual values/steps.
 - Do not include calendar dates anywhere; use numeric intervals in **weeks** only.
 
-TASK TYPE RESTRICTIONS
-- Exclude routine cleaning or visual-only inspections unless the OEM manual explicitly prescribes them or a standard/supplier requires them. If included, cite the exact source.
-- Otherwise, focus on technical, measurable tasks (lubrication, torque, calibration, functional checks, replacements, adjustments, monitoring, safety interlocks).
+
+- CRITICAL: Do NOT include "Visual Inspection" or "Monthly cleaning" tasks at the child asset level as these are handled at the parent asset level.
+- Exclude any routine cleaning or visual-only inspections unless the OEM manual explicitly prescribes them for this specific component (not general system) or a standard/supplier requires them. If included, cite the exact source.
+- Focus on technical, measurable tasks specific to the child asset (lubrication, torque, calibration, functional checks, replacements, adjustments, monitoring, safety interlocks).
+
 
 DEDUPLICATION & INHERITANCE
 - Treat Site Location, Environment, Operating Hours, and Criticality as universal context. Do NOT repeat them in every field; only note deviations in "context_overrides".
@@ -135,7 +149,7 @@ FEW-SHOT EXAMPLE (ABBREVIATED; 1 task)
   "engineering_rationale": "Approx. monthly (4 weeks) interval aligned to continuous operation in {environment}; adjust if temperature trending indicates",
   "safety_precautions": ["PPE per site policy", "LOTO before contact with rotating equipment"],
   "common_failures_prevented": ["Bearing overheating", "Premature wear", "Seizure"],
-  "usage_insights": "For {hours}, consider trending vibration/temperature to optimize interval",
+  "usage_insights": "With {hours} cumulative runtime hours since installation, consider trending vibration/temperature to optimize interval based on actual usage patterns",
   "tools_needed": ["Grease gun with zerk coupler", "Clean lint-free wipes"],
   "number_of_technicians": 1,
   "estimated_time_minutes": 15,
@@ -237,7 +251,65 @@ def _validate_plan_structure(plan_json: Dict[str, Any]) -> None:
 async def generate_ai_plan(input: PMPlanInput, request: Request):
     logger.info(f"🚀 Received AI plan request: {input.name}")
 
-    prompt = generate_prompt(input)
+    # Calculate runtime hours if parent_asset and child_asset data is available
+    calculated_hours = input.hours
+
+    if hasattr(input, 'parent_asset_id') and hasattr(input, 'child_asset_id') and input.parent_asset_id and input.child_asset_id:
+        try:
+            from database import get_service_supabase_client
+            service_client = get_service_supabase_client()
+
+            # Fetch parent asset's hours_run_per_week
+            parent_response = service_client.table('parent_assets').select('hours_run_per_week').eq('id', input.parent_asset_id).limit(1).execute()
+
+            if parent_response.data and len(parent_response.data) > 0:
+                hours_run_per_week = parent_response.data[0].get('hours_run_per_week')
+
+                if hours_run_per_week:
+                    # Fetch child asset's install date (plan_start_date)
+                    child_response = service_client.table('child_assets').select('plan_start_date').eq('id', input.child_asset_id).limit(1).execute()
+
+                    if child_response.data and len(child_response.data) > 0:
+                        install_date = child_response.data[0].get('plan_start_date')
+
+                        if install_date:
+                            from datetime import datetime, date
+
+                            # Parse install date
+                            if isinstance(install_date, str):
+                                install_date = datetime.fromisoformat(install_date.replace('Z', '+00:00')).date()
+                            elif isinstance(install_date, datetime):
+                                install_date = install_date.date()
+
+                            # Calculate weeks since install and total hours
+                            current_date = date.today()
+                            weeks_since_install = (current_date - install_date).days / 7
+                            total_hours = max(0, int(weeks_since_install * hours_run_per_week))
+                            calculated_hours = str(total_hours)
+
+                            logger.info(f"📊 Runtime hours calculated: {calculated_hours} hours (weeks: {weeks_since_install:.1f}, weekly_hours: {hours_run_per_week})")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to calculate runtime hours: {e}")
+
+    # Create modified input with calculated hours
+    modified_input = PMPlanInput(
+        name=input.name,
+        model=input.model,
+        serial=input.serial,
+        category=input.category,
+        hours=calculated_hours,
+        frequency=input.frequency,
+        criticality=input.criticality,
+        additional_context=input.additional_context,
+        parent_asset=input.parent_asset,
+        child_asset=input.child_asset,
+        site_location=input.site_location,
+        environment=input.environment,
+        parent_asset_id=getattr(input, 'parent_asset_id', None),
+        child_asset_id=getattr(input, 'child_asset_id', None)
+    )
+
+    prompt = generate_prompt(modified_input)
 
     try:
         model = genai.GenerativeModel(
@@ -268,7 +340,9 @@ async def generate_ai_plan(input: PMPlanInput, request: Request):
         _validate_plan_structure(plan_json)
 
         logger.info("✅ AI plan generated and validated successfully")
-        return {"plan": ai_output, "plan_json": plan_json}
+        # Return in the format expected by the frontend (AIPlanResponse)
+        maintenance_tasks = plan_json.get("maintenance_plan", [])
+        return {"success": True, "data": maintenance_tasks}
 
     except Exception as e:
         logger.error(f"🧠 Gemini error: {e}")

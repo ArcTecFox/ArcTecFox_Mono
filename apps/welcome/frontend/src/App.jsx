@@ -4,6 +4,7 @@ import { HelmetProvider } from "react-helmet-async";
 
 // Eager load Home for fast first paint
 import Home from "./pages/Home";
+import Login from "./pages/Login";
 import UnifiedLayout from "./layouts/UnifiedLayout";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -17,7 +18,9 @@ const SuperAdminManagement = React.lazy(() => import("./pages/SuperAdminManageme
 const TermsOfService = React.lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy"));
 const AcceptInvitation = React.lazy(() => import("./pages/AcceptInvitation"));
+
 const FAQ = React.lazy(() => import("./pages/FAQ")); // ← add this
+
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -40,54 +43,46 @@ export default function App() {
           <AuthProvider>
             <Suspense fallback={<LoadingSpinner text="Loading page..." />}>
               <Routes>
-                {/* All routes use UnifiedLayout for consistent navigation */}
-                <Route element={<UnifiedLayout />}>
-                  {/* Public routes */}
-                  <Route path="/" element={<Home />} />
-                  <Route path="/faq" element={<FAQ />} /> {/* ← new FAQ route */}
-                  <Route path="/terms-of-service" element={<TermsOfService />} />
-                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                  <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
 
-                  {/* Protected routes */}
-                  <Route
-                    path="/dashboard"
-                    element={
-                      <ProtectedRoute>
-                        <MaintenanceSchedule />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/admin/users"
-                    element={
-                      <ProtectedRoute>
-                        <UserManagement />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/admin/companies"
-                    element={
-                      <ProtectedRoute>
-                        <CompanyManagement />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/admin/super-admins"
-                    element={
-                      <ProtectedRoute>
-                        <SuperAdminManagement />
-                      </ProtectedRoute>
-                    }
-                  />
-                </Route>
-              </Routes>
-            </Suspense>
-          </AuthProvider>
-        </Router>
-      </HelmetProvider>
+              {/* All routes use UnifiedLayout for consistent navigation */}
+              <Route element={<UnifiedLayout />}>
+                {/* Public routes */}
+                <Route path="/" element={<Home />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/faq" element={<FAQ />} /> {/* ← new FAQ route */}
+                <Route path="/terms-of-service" element={<TermsOfService />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
+                <Route path="/approved-signup" element={<ApprovedSignup />} />
+                
+                {/* Protected routes */}
+                <Route path="/dashboard" element={
+                  <ProtectedRoute>
+                    <MaintenanceSchedule />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/users" element={
+                  <ProtectedRoute>
+                    <UserManagement />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/companies" element={
+                  <ProtectedRoute>
+                    <CompanyManagement />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/super-admins" element={
+                  <ProtectedRoute>
+                    <SuperAdminManagement />
+                  </ProtectedRoute>
+                } />
+              </Route>
+            </Routes>
+          </Suspense>
+        </AuthProvider>
+      </Router>
+    </HelmetProvider>
+
     </ErrorBoundary>
   );
 }
