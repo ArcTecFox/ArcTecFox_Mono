@@ -96,6 +96,20 @@ CREATE POLICY "good" ON table USING (created_by = auth.uid());
 ### 4. Parsing Function (parseMaintenanceInterval)
 Located in `apps/welcome/frontend/src/api.js` - converts AI intervals ("Monthly" → 1, "Every 3 months" → 3). MUST stay synchronized with backend `task_due_dates.py`.
 
+### 5. AI Configuration - Centralized (DO NOT DUPLICATE)
+**ALL** Google Gemini AI calls MUST use the centralized configuration in `apps/welcome/backend/config.py`:
+```python
+from config import get_gemini_model
+
+# Use centralized config (applies defaults)
+model = get_gemini_model()
+
+# Override specific parameters as needed
+model = get_gemini_model(temperature=0.7, response_mime_type="application/json")
+```
+
+**NEVER** create model instances directly with `genai.GenerativeModel()` or duplicate config values. To update the model globally, change `GEMINI_MODEL` in `config.py` only.
+
 ## Common Patterns
 ```javascript
 // ✅ Correct Supabase patterns
@@ -145,3 +159,29 @@ return (
 3. **Test RLS changes in dev first**
 4. **Check existing patterns before creating new ones**
 5. **Prompt workflow**: All Gemini prompt reviews/updates must start with gemini-prompt-engineer agent for optimization, then ai-engineer agent implements the optimized prompts
+
+## CURRENT ISSUES
+
+### Toast Notification - Timestamp-based State Pattern (RESOLVED)
+**Issue**: Toast notifications from `ParentPlanLoadingModal` appear on first "Generate PM Plan" click but not on subsequent clicks.
+
+**Root Cause**: React's useEffect dependency optimization. When using a boolean state like `parentPlanSuccess`, React sees identical state transitions (false→true→false→true) and optimizes away subsequent useEffect executions, preventing the toast from appearing.
+
+**Solution**: Use timestamp-based state instead of boolean. Each success generates a unique timestamp value using `Date.now()`, forcing useEffect to execute every time.
+
+**Implementation** (ManageAssets.jsx):
+```javascript
+// Line 157: Use null instead of false
+const [parentPlanSuccessTimestamp, setParentPlanSuccessTimestamp] = useState(null);
+
+// Line 638: Set unique timestamp on success
+setParentPlanSuccessTimestamp(Date.now());
+
+// Line 2267: Convert to boolean for modal prop
+success={!!parentPlanSuccessTimestamp}
+
+// Lines 557, 2272: Reset to null
+setParentPlanSuccessTimestamp(null);
+```
+
+**General Pattern**: Use timestamp-based state (`Date.now()`) whenever useEffect needs to respond to repeated events, not just state changes. This prevents React's dependency array optimization from skipping executions.
