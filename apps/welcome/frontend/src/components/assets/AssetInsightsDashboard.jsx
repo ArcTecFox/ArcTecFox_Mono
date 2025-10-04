@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase, fetchParentPMTasks } from '../../api';
+import { supabase, fetchParentPMTasks, formatMaintenanceInterval } from '../../api';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -366,13 +366,7 @@ const AssetInsightsDashboard = React.memo(({ parentAsset, childAssets }) => {
                             <h4 className="font-semibold text-gray-800">{task.task_name}</h4>
                             <div className="mt-1 space-y-1">
                               <p className="text-sm text-gray-600">
-                                <span className="font-medium">Interval:</span> Every {
-                                  task.maintenance_interval < 1 
-                                    ? `${Math.round(task.maintenance_interval * 30)} days`
-                                    : task.maintenance_interval === 1 
-                                      ? 'month' 
-                                      : `${task.maintenance_interval} months`
-                                }
+                                <span className="font-medium">Interval:</span> {formatMaintenanceInterval(task.maintenance_interval)}
                               </p>
                               {task.reason && (
                                 <p className="text-sm text-gray-600">

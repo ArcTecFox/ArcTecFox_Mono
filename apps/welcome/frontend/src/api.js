@@ -716,6 +716,28 @@ export const generateAIPlan = async (planData) => {
   }
 };
 
+// Helper function to format maintenance interval from weeks to user-friendly text
+export const formatMaintenanceInterval = (weekValue) => {
+  if (!weekValue && weekValue !== 0) return 'Not specified';
+
+  const weeks = parseFloat(weekValue);
+
+  // Map common week values to text
+  if (weeks <= 0.2) return 'Daily';
+  if (weeks === 1) return 'Weekly';
+  if (weeks === 2) return 'Biweekly';
+  if (weeks === 4) return 'Monthly';
+  if (weeks === 8) return 'Bimonthly';
+  if (weeks === 13) return 'Quarterly';
+  if (weeks === 26) return 'Semi-annually';
+  if (weeks === 52) return 'Annually';
+
+  // For non-standard values, format as "Every X weeks/months/years"
+  if (weeks < 4) return `Every ${weeks} weeks`;
+  if (weeks < 52) return `Every ${Math.round(weeks / 4)} months`;
+  return `Every ${Math.round(weeks / 52)} years`;
+};
+
 // ✅ Combined function using both direct DB + secure AI
 // ✅ Function for complete lead capture flow (public homepage)
 export const captureLeadWithPlan = async ({ planData, email, company, fullName, requestAccess }) => {

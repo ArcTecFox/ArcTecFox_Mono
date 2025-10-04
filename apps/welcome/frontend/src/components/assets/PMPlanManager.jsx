@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 import { Sparkles, Wrench, FileText } from 'lucide-react';
 import { LoadingModal } from './AssetModals';
+import { formatMaintenanceInterval } from '../../api';
 
 const PMPlanManager = React.memo(({ 
   selectedChildAsset,
@@ -116,7 +117,7 @@ const PMPlanManager = React.memo(({
                                 <span className="font-medium text-gray-900">{task.task_name}</span>
                                 {task.maintenance_interval && (
                                   <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    Every {task.maintenance_interval} months
+                                    {formatMaintenanceInterval(task.maintenance_interval)}
                                   </span>
                                 )}
                               </div>
