@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 from typing import Optional
 import logging
 import json
@@ -9,6 +8,7 @@ import sys
 # Add parent directory to path to import auth module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth import verify_supabase_token, AuthenticatedUser
+from config import get_gemini_model
 # Optional rate limiting
 try:
     from slowapi import Limiter
@@ -19,9 +19,6 @@ except ImportError:
 
 router = APIRouter()
 logger = logging.getLogger("main")
-
-# Configure Google AI (using the same setup as main.py)
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Rate limiter (optional)
 if RATE_LIMITING_AVAILABLE:
@@ -111,16 +108,10 @@ Suggest up to {input_data.top_n} child assets that are most relevant for prevent
 """
 
     try:
-        # Use the same Google AI pattern as generate-ai-plan in main.py
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Use centralized AI configuration
+        model = get_gemini_model(temperature=0.7, max_output_tokens=4096)
         full_prompt = "You are an expert in asset management and preventive maintenance planning. Always return pure JSON without any markdown formatting.\n\n" + prompt
-        response = model.generate_content(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-            )
-        )
+        response = model.generate_content(full_prompt)
     except Exception as ge:
         logger.error(f"🧠 Gemini API error: {ge}")
         raise HTTPException(status_code=502, detail="Gemini API error")

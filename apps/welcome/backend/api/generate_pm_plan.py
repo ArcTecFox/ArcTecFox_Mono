@@ -3,17 +3,14 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime
-import google.generativeai as genai
 import logging
 import os
 import json
 from typing import Optional, Any, Dict
+from config import get_gemini_model
 
 router = APIRouter()
 logger = logging.getLogger("main")
-
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ============
 # Input model
@@ -312,13 +309,9 @@ async def generate_ai_plan(input: PMPlanInput, request: Request):
     prompt = generate_prompt(modified_input)
 
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.4,               # more deterministic for schema output
-                max_output_tokens=8192,
-                response_mime_type="application/json",
-            ),
+        model = get_gemini_model(
+            temperature=0.4,
+            response_mime_type="application/json",
             system_instruction="Always return pure JSON, no markdown, no prose outside the JSON."
         )
 
