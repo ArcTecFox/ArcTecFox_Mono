@@ -7,24 +7,21 @@ import logging
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth import verify_supabase_token, AuthenticatedUser
+from config import get_gemini_model, settings
 from prompts.agent_prompts import get_agent_prompt
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
 class AgentRequest(BaseModel):
     """Generic agent request model"""
     agent_type: str = Field(..., description="Type of agent to use (MVP_PLANNER, PM_TASK_GENERATOR, etc.)")
     parameters: Dict[str, Any] = Field(..., description="Parameters for the agent prompt")
-    model: Optional[str] = Field("gemini-2.0-flash-exp", description="AI model to use")
-    temperature: Optional[float] = Field(0.7, ge=0, le=1, description="Creativity level (0=deterministic, 1=creative)")
+    model: Optional[str] = Field(None, description="AI model to use (uses centralized config if not specified)")
+    temperature: Optional[float] = Field(None, ge=0, le=1, description="Creativity level (uses centralized config if not specified)")
     
 class AgentResponse(BaseModel):
     """Generic agent response model"""
@@ -47,16 +44,11 @@ async def execute_agent(
     try:
         # Get the formatted prompt
         prompt = get_agent_prompt(request.agent_type, **request.parameters)
-        
-        # Initialize the AI model
-        model = genai.GenerativeModel(
+
+        # Initialize the AI model using centralized config
+        model = get_gemini_model(
             model_name=request.model,
-            generation_config={
-                "temperature": request.temperature,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 8192,
-            }
+            temperature=request.temperature
         )
         
         # Generate response

@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 from typing import Optional
 import logging
 import json
@@ -13,6 +12,7 @@ from datetime import date
 # Add parent directory to path to import auth module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth import verify_supabase_token, AuthenticatedUser
+from config import get_gemini_model
 
 # Optional rate limiting
 try:
@@ -24,9 +24,6 @@ except ImportError:
 
 router = APIRouter()
 logger = logging.getLogger("main")
-
-# Configure Google AI (same setup as main.py)
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Rate limiter (optional)
 if RATE_LIMITING_AVAILABLE:
@@ -256,13 +253,9 @@ SCHEMA REMINDER
 """
 
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.4,               # more deterministic for schema-like output
-                max_output_tokens=8192,
-                response_mime_type="application/json",
-            ),
+        model = get_gemini_model(
+            temperature=0.4,
+            response_mime_type="application/json",
             system_instruction="Always return pure JSON, no markdown, no prose outside the JSON."
         )
 

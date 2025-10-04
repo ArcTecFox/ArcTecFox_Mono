@@ -8,7 +8,7 @@ import io
 import tempfile
 from pathlib import Path
 
-import google.generativeai as genai
+import google.generativeai as genai  # Only for debug endpoint
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,12 +17,13 @@ from pydantic import BaseModel, Field, validator
 from supabase import create_client, Client
 # Import our new auth module
 from auth import (
-    verify_supabase_token, 
-    AuthenticatedUser, 
+    verify_supabase_token,
+    AuthenticatedUser,
     get_user_supabase_client,
     verify_site_access,
     require_admin_role
 )
+from config import get_gemini_model
 from database import get_user_supabase_client as db_get_user_client, get_service_supabase_client
 # Rate limiting imports (optional - graceful fallback if not available)
 try:
@@ -157,13 +158,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Gemini client
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-if not gemini_api_key:
-    raise ValueError("GEMINI_API_KEY must be set")
-
-genai.configure(api_key=gemini_api_key)
-logger.info(f"🔑 Gemini key loaded: {'Yes' if gemini_api_key else 'No'}")
+# Gemini configuration is now centralized in config.py
+logger.info("🔑 Gemini API configured via centralized config")
 
 # Initialize Supabase client for file access
 supabase_url = os.getenv("SUPABASE_URL")
@@ -412,15 +408,9 @@ For each PM task:
 """
 
         try:
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            model = get_gemini_model(temperature=0.7)
             full_prompt = "You are an expert in preventive maintenance planning. Always return pure JSON without any markdown formatting.\n\n" + prompt
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=8192,
-                )
-            )
+            response = model.generate_content(full_prompt)
         except Exception as ge:
             logger.error(f"🧠 Gemini API error: {ge}")
             raise HTTPException(status_code=502, detail="Gemini API error")
@@ -589,7 +579,7 @@ Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
 Return the response as a JSON array with all fields populated.
 """
 
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = get_gemini_model()
         ai_response = model.generate_content(prompt)
         
         # Parse AI response
@@ -871,7 +861,7 @@ Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
 Return the response as a JSON array with all fields populated.
 """
 
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = get_gemini_model()
         ai_response = model.generate_content(prompt)
         
         try:
