@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { generatePMPlan, fetchUserSitesForPlanning, fetchUserSites, fetchPMPlansByAsset, checkSitePlanLimit, isUserSuperAdmin, supabase } from "../api";
+import { generatePMPlan, fetchUserSitesForPlanning, fetchUserSites, fetchPMPlansByAsset, checkSitePlanLimit, isUserSuperAdmin, supabase, formatMaintenanceInterval } from "../api";
 import * as XLSX from 'xlsx';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from "react-router-dom";
@@ -580,7 +580,7 @@ function PMPlanDisplay({ plan, loading = false }) {
           <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
             <h4 className="text-lg font-semibold text-blue-600 mb-2">{task.task_name}</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              <Info label="Interval" value={task.maintenance_interval} />
+              <Info label="Interval" value={formatMaintenanceInterval(task.maintenance_interval)} />
               <Info label="Reason" value={task.reason} />
               <Info label="Estimated Time" value={task.estimated_time_minutes || 'Not specified'} />
               <Info label="Tools Needed" value={task.tools_needed || 'Standard maintenance tools'} />
@@ -1931,7 +1931,7 @@ export default function PMPlanner() {
                    <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
                      <h4 className="text-lg font-semibold text-blue-600 mb-2">{task.task_name}</h4>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                       <Info label="Interval" value={task.maintenance_interval} />
+                       <Info label="Interval" value={formatMaintenanceInterval(task.maintenance_interval)} />
                        <Info label="Reason" value={task.reason} />
                        <Info label="Estimated Time" value={task.est_minutes ? `${task.est_minutes} minutes` : 'Not specified'} />
                        <Info label="Tools Needed" value={task.tools_needed || 'Standard maintenance tools'} />

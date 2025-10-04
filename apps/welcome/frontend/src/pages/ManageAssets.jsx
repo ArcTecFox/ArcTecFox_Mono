@@ -15,7 +15,8 @@ import {
   createParentPMPlan,
   createPMTasks,
   updateParentAssetSpares,
-  extractAssetDetails
+  extractAssetDetails,
+  formatMaintenanceInterval
 } from '../api';
 import FileUpload from '../components/forms/FileUpload';
 import { createStorageService } from '../services/storageService';
@@ -3075,7 +3076,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                       <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
                         <h4 className="text-lg font-semibold text-blue-600 mb-2">{task.task_name}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                          <Info label="Interval" value={task.maintenance_interval} />
+                          <Info label="Interval" value={formatMaintenanceInterval(task.maintenance_interval)} />
                           <Info label="Reason" value={task.reason} />
                           <Info label="Estimated Time" value={task.est_minutes ? `${task.est_minutes} minutes` : 'Not specified'} />
                           <Info label="Tools Needed" value={task.tools_needed || 'Standard maintenance tools'} />
