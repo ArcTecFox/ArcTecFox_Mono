@@ -2475,71 +2475,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                   {/* Child Assets Rows (shown when parent is selected) */}
                   {selectedParentAsset?.id === asset.id && (
                     <>
-                      {/* Button Row - appears above child assets */}
-                      <tr>
-                        <td colSpan="8" className="px-6 py-2 bg-gray-50">
-                          <div className="flex gap-2 flex-wrap">
-                            <button
-                              onClick={() => {
-                                if (!showAddChildAsset) {
-                                  // When opening the form, pre-populate with parent's dates
-                                  setNewChildAsset({
-                                    name: '',
-                                    make: '',
-                                    model: '',
-                                    serial_number: '',
-                                    category: '',
-                                    purchase_date: selectedParentAsset.purchase_date || '',
-                                    install_date: selectedParentAsset.install_date || '',
-                                    notes: '',
-                                    addtl_context: '',
-                                    plan_start_date: '',
-                                    criticality: '',
-                                    cost_to_replace: ''
-                                  });
-                                }
-                                setShowAddChildAsset(!showAddChildAsset);
-                              }}
-                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs"
-                            >
-                              {showAddChildAsset ? 'Cancel' : 'Add Child Asset'}
-                            </button>
-                            <button
-                              onClick={() => handleSuggestChildAssets()}
-                              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs"
-                            >
-                              Suggest Child Assets
-                            </button>
-
-                            {/* Show these buttons only when a child asset is selected */}
-                            {selectedChildAssetForPlan && (
-                              <>
-                                <div className="border-l border-gray-400 mx-2"></div>
-                                <button
-                                  onClick={() => handleCreateUpdatePMPlan(selectedChildAssetForPlan)}
-                                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                  disabled={loadingPlans || generatingPlan}
-                                >
-                                  {loadingPlans ? 'Loading...' : generatingPlan ? 'Generating Plan...' : (existingPlans.length > 0 ? 'Update PM Plan' : 'Create PM Plan')}
-                                </button>
-                                <button
-                                  onClick={() => openEditModal(selectedChildAssetForPlan, false)}
-                                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs"
-                                >
-                                  Edit Asset
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteChildAsset(selectedChildAssetForPlan.id)}
-                                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-xs"
-                                >
-                                  Delete Asset
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
                       {/* Child Assets Header Row */}
                       {childAssets.length > 0 && (
                         <tr className="bg-blue-100">
@@ -2676,6 +2611,71 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
                           </td>
                         </tr>
                       ))}
+
+                      {/* Add Child Asset Button Row - appears after all child assets */}
+                      <tr>
+                        <td colSpan="8" className="px-6 py-2 bg-gray-50">
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => {
+                                if (!showAddChildAsset) {
+                                  // When opening the form, pre-populate with parent's dates
+                                  setNewChildAsset({
+                                    name: '',
+                                    make: '',
+                                    model: '',
+                                    serial_number: '',
+                                    category: '',
+                                    purchase_date: selectedParentAsset.purchase_date || '',
+                                    install_date: selectedParentAsset.install_date || '',
+                                    notes: '',
+                                    addtl_context: '',
+                                    plan_start_date: '',
+                                    criticality: '',
+                                    cost_to_replace: ''
+                                  });
+                                }
+                                setShowAddChildAsset(!showAddChildAsset);
+                              }}
+                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs"
+                            >
+                              {showAddChildAsset ? 'Cancel' : 'Add Child Asset'}
+                            </button>
+                            <button
+                              onClick={() => handleSuggestChildAssets()}
+                              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs"
+                            >
+                              Suggest Child Assets
+                            </button>
+
+                            {/* Show these buttons only when a child asset is selected */}
+                            {selectedChildAssetForPlan && (
+                              <>
+                                <div className="border-l border-gray-400 mx-2"></div>
+                                <button
+                                  onClick={() => handleCreateUpdatePMPlan(selectedChildAssetForPlan)}
+                                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                  disabled={loadingPlans || generatingPlan}
+                                >
+                                  {loadingPlans ? 'Loading...' : generatingPlan ? 'Generating Plan...' : (existingPlans.length > 0 ? 'Update PM Plan' : 'Create PM Plan')}
+                                </button>
+                                <button
+                                  onClick={() => openEditModal(selectedChildAssetForPlan, false)}
+                                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs"
+                                >
+                                  Edit Asset
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteChildAsset(selectedChildAssetForPlan.id)}
+                                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-xs"
+                                >
+                                  Delete Asset
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
 
                       {/* Add Child Asset Form */}
                       {showAddChildAsset && (
