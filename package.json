@@ -12,6 +12,7 @@
     "dev:v1": "npm --workspace apps/v1 run dev"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.5",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.12"
