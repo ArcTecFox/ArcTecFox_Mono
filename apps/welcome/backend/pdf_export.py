@@ -111,6 +111,41 @@ class RoundedTableWrapper(Flowable):
         self.table.setStyle(TableStyle(table_style_commands))
         self.table.drawOn(canvas, 0, 0)
 
+def format_maintenance_interval(week_value):
+    """Format maintenance interval from weeks to user-friendly text"""
+    if not week_value and week_value != 0:
+        return 'Not specified'
+
+    try:
+        weeks = float(week_value)
+
+        # Map common week values to text
+        if weeks <= 0.2:
+            return 'Daily'
+        elif weeks == 1:
+            return 'Weekly'
+        elif weeks == 2:
+            return 'Biweekly'
+        elif weeks == 4:
+            return 'Monthly'
+        elif weeks == 8:
+            return 'Bimonthly'
+        elif weeks == 13:
+            return 'Quarterly'
+        elif weeks == 26:
+            return 'Semi-annually'
+        elif weeks == 52:
+            return 'Annually'
+        # For non-standard values
+        elif weeks < 4:
+            return f'Every {weeks} weeks'
+        elif weeks < 52:
+            return f'Every {round(weeks / 4)} months'
+        else:
+            return f'Every {round(weeks / 52)} years'
+    except (ValueError, TypeError):
+        return str(week_value) if week_value else 'Not specified'
+
 def process_instructions(instructions):
     """Process instructions and remove double numbering"""
     if not instructions:
@@ -345,7 +380,7 @@ def export_maintenance_task_to_pdf(task, output_path=None):
     row1 = [
         [
             Paragraph("<b>Interval:</b>", label_style),
-            Paragraph(str(task.get('duration') or task.get('maintenance_interval', 'Monthly')), cell_style)
+            Paragraph(format_maintenance_interval(task.get('duration') or task.get('maintenance_interval')), cell_style)
         ],
         [
             Paragraph("<b>Technicians Required:</b>", label_style),
@@ -710,7 +745,7 @@ def export_pm_plans_data_to_pdf(data, output_path=None):
         row1 = [
             [
                 Paragraph("<b>Interval:</b>", label_style),
-                Paragraph(str(task.get('duration') or task.get('maintenance_interval', 'Monthly')), cell_style)
+                Paragraph(format_maintenance_interval(task.get('duration') or task.get('maintenance_interval')), cell_style)
             ],
             [
                 Paragraph("<b>Technicians Required:</b>", label_style),
@@ -928,7 +963,7 @@ def export_detailed_pm_plans_to_pdf(plans, output_path=None):
                 
                 # Task details
                 task_details = [
-                    f"Interval: {task.get('maintenance_interval', 'N/A')}",
+                    f"Interval: {format_maintenance_interval(task.get('maintenance_interval'))}",
                     f"Time to Complete: {task.get('time_to_complete', 'N/A')}",
                     f"Tools Needed: {task.get('tools_needed', 'N/A')}",
                     f"Number of Technicians: {task.get('no_techs_needed', 'N/A')}",
