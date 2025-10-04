@@ -589,7 +589,7 @@ Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
 Return the response as a JSON array with all fields populated.
 """
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
         ai_response = model.generate_content(prompt)
         
         # Parse AI response
@@ -871,7 +871,7 @@ Create a comprehensive PM plan with exactly 12 tasks. For each task provide:
 Return the response as a JSON array with all fields populated.
 """
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
         ai_response = model.generate_content(prompt)
         
         try:

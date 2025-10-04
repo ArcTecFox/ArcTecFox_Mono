@@ -166,7 +166,7 @@ REMEMBER: Partial extraction with high confidence is MUCH better than complete e
 
     try:
         # Call Gemini API
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
         response = model.generate_content(prompt)
 
         if not response or not response.text:

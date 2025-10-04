@@ -23,7 +23,7 @@ class AgentRequest(BaseModel):
     """Generic agent request model"""
     agent_type: str = Field(..., description="Type of agent to use (MVP_PLANNER, PM_TASK_GENERATOR, etc.)")
     parameters: Dict[str, Any] = Field(..., description="Parameters for the agent prompt")
-    model: Optional[str] = Field("gemini-1.5-flash", description="AI model to use")
+    model: Optional[str] = Field("gemini-2.0-flash-exp", description="AI model to use")
     temperature: Optional[float] = Field(0.7, ge=0, le=1, description="Creativity level (0=deterministic, 1=creative)")
     
 class AgentResponse(BaseModel):
