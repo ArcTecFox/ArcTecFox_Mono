@@ -88,7 +88,6 @@ function dispatch(action) {
 }
 
 function toast(props) {
-  console.log('🍞 Toast function called with:', props);
   const id = genId()
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
@@ -103,8 +102,6 @@ function toast(props) {
       },
     },
   })
-  
-  console.log('🍞 Toast dispatched with id:', id);
 
   return {
     id,

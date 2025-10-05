@@ -44,8 +44,6 @@ const getBackendUrl = () => {
  */
 export async function executeAgent(agentType, parameters, options = {}) {
   try {
-    console.log(`🤖 Executing agent: ${agentType}`, parameters);
-    
     // Get auth session
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -71,10 +69,9 @@ export async function executeAgent(agentType, parameters, options = {}) {
       const error = await response.json();
       throw new Error(error.detail || `Agent execution failed: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    console.log('✅ Agent response:', data);
-    
+
     return data;
   } catch (error) {
     console.error('❌ Agent execution error:', error);

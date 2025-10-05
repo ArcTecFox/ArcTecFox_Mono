@@ -49,14 +49,6 @@ export const useToSCheck = (user) => {
           new Date(userData.confirmed_ToS) < new Date(TERMS_LAST_UPDATED);
 
         setNeedsToSAcceptance(needsAcceptance);
-        
-        // Only log if ToS acceptance is needed or check is slow
-        if (needsAcceptance || (endTime - startTime) > 1000) {
-          console.log('✅ ToS: Check complete:', {
-            needsAcceptance,
-            duration: Math.round(endTime - startTime) + 'ms'
-          });
-        }
 
       } catch (error) {
         console.error('Error in ToS check:', error);

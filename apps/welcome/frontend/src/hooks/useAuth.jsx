@@ -16,7 +16,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true;
     let initialCheckDone = false;
-    console.log('🔄 [AUTH EFFECT] useAuth useEffect triggered - checking auth state');
 
     // Listen for auth state changes FIRST - this handles initial session too
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -52,7 +51,6 @@ export const AuthProvider = ({ children }) => {
       setUser(currentUser);
       setError(null);
     } catch (error) {
-      console.log('No active session:', error.message);
       setUser(null);
       setError(null);
     } finally {

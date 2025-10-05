@@ -125,9 +125,8 @@ export default function Home() {
           asset_name: formState?.asset_name,
           asset_type: formState?.asset_type
         });
-        console.log('✅ Support notification sent successfully');
       } catch (emailError) {
-        console.log('⚠️ Support notification failed (non-critical):', emailError);
+        // Support notification failed (non-critical)
       }
 
       // Auto-export to Excel for the user
@@ -137,9 +136,7 @@ export default function Home() {
       if (result.pdf_url) {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
         const pdfUrl = `${backendUrl}${result.pdf_url}`;
-        
-        console.log('📄 Attempting PDF download from:', pdfUrl);
-        
+
         // Use window.open as a fallback for better cross-browser compatibility
         try {
           // Try fetch first to ensure the file exists
@@ -154,7 +151,6 @@ export default function Home() {
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
-            console.log('✅ PDF download successful');
           } else {
             console.error('❌ PDF download failed: Response not OK', response.status);
           }
