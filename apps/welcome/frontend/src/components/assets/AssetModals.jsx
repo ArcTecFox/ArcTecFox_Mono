@@ -16,6 +16,13 @@ function LoadingModal({
   const [progressValue, setProgressValue] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
 
+  // Reset isClosing when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setIsClosing(false);
+    }
+  }, [isOpen]);
+
   // Progress steps for PM plan generation
   const steps = [
     {
