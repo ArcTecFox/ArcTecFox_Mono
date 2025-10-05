@@ -32,12 +32,6 @@ import AssetDetailsModal from '../components/assets/AssetDetailsModal';
 import { extractTextFromFile, truncateTextForAPI } from '../utils/fileTextExtractor';
 
 const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propUserSites }) => {
-  console.log('🏭 [MANAGE ASSETS] Component rendering - props changed?', {
-    selectedSite,
-    propUserSites: propUserSites?.length,
-    onAssetUpdate: typeof onAssetUpdate
-  });
-  
   const { user } = useAuth();
   const [parentAssets, setParentAssets] = useState([]);
   const [childAssets, setChildAssets] = useState([]);
@@ -187,11 +181,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   const [pendingParentAsset, setPendingParentAsset] = useState(null);
 
   useEffect(() => {
-    console.log('🚀 [Component Mount] ManageAssets component mounted/updated');
-    console.log('🚀 [Component Mount] Current URL:', window.location.pathname);
-    console.log('🚀 [Component Mount] User exists:', !!user);
-    console.log('🚀 [Component Mount] Props:', { onAssetUpdate: !!onAssetUpdate });
-    
     if (user) {
       initializeComponent();
     }
@@ -205,10 +194,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   }, [selectedSite]);
 
   const initializeComponent = async () => {
-    console.log('🚀 [Initialization] Starting component initialization...');
     await checkUserPermissions();
     await loadAssetCategories();
-    console.log('🚀 [Initialization] Component initialization complete');
   };
 
   const loadAssetCategories = async () => {
@@ -223,7 +210,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       // If we got data from dim_assets, use it
       if (data && data.length > 0) {
         setAssetCategories(data);
-        console.log(`✅ Loaded ${data.length} categories from dim_assets`);
         return;
       }
     } catch (err) {
@@ -260,7 +246,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
     ];
 
     setAssetCategories(fallbackCategories);
-    console.log(`⚠️ Using fallback categories (${fallbackCategories.length} categories)`);
   };
 
   const checkUserPermissions = async () => {
@@ -459,10 +444,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
     try {
       // Extract text content from the file (new unified approach)
-      console.log(`📄 Extracting text from ${file.type} file: ${file.name}`);
       const extractedText = await extractTextFromFile(file);
       const truncatedText = truncateTextForAPI(extractedText, 20000);
-      console.log(`📄 Extracted ${extractedText.length} chars, truncated to ${truncatedText.length} chars`);
       if (isModal) {
         setUploadingModalFile(true);
       } else if (isEditModal) {
@@ -544,8 +527,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   // Generate Parent Plan Workflow
   const generateParentPlanWorkflow = async (parentAsset) => {
     try {
-      console.log('🤖 [Parent Plan] Starting parent plan generation for:', parentAsset.name);
-
       // Reset error and success states
       setParentPlanError(null);
       setParentPlanSuccess(false);
@@ -596,29 +577,21 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
           pm_frequency: 'Standard',
           criticality: 'Medium'
         };
-        
-        console.log('🤖 [Parent Plan] Calling generateParentPlan with:', planInput);
+
         const generatedPlan = await generateParentPlan(planInput);
-        console.log('🤖 [Parent Plan] Plan generated:', generatedPlan);
         setGeneratedParentPlan(generatedPlan);
         
         // Create PM Plan record
-        console.log('📋 [Parent Plan] Creating PM plan record...');
         const pmPlan = await createParentPMPlan(parentAsset.id, parentAsset.site_id);
-        console.log('📋 [Parent Plan] PM plan created:', pmPlan);
         
         // Create PM Tasks
         if (generatedPlan.maintenance_plan && generatedPlan.maintenance_plan.length > 0) {
-          console.log('📝 [Parent Plan] Creating PM tasks...');
           await createPMTasks(pmPlan.id, generatedPlan.maintenance_plan);
-          console.log('📝 [Parent Plan] PM tasks created');
         }
         
         // Update parent asset with critical spare parts
         if (generatedPlan.critical_spares && generatedPlan.critical_spares.length > 0) {
-          console.log('🔧 [Parent Plan] Updating parent asset with critical spares...');
           await updateParentAssetSpares(parentAsset.id, generatedPlan.critical_spares);
-          console.log('🔧 [Parent Plan] Critical spares updated');
         }
         
         // Complete progress
@@ -642,7 +615,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         setParentPlanSuccess(false); // Reset for next time
 
         // Continue to child asset suggestions
-        console.log('🤖 [Workflow] Transitioning to child asset suggestions...');
         await requestChildAssetSuggestions(parentAsset);
 
       } catch (error) {
@@ -721,19 +693,15 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
     // Check if manual was provided and extract details
     if (parentManualFile) {
-      console.log('🔍 Manual provided, extracting details...');
       setShowAssetDetailsModal(true);
       setExtracting(true);
 
       try {
         // Extract readable text from file (handles PDFs, DOCs, etc.)
-        console.log(`🔍 Extracting text from ${parentManualFile.type} file: ${parentManualFile.name}`);
         const extractedText = await extractTextFromFile(parentManualFile);
 
         // Truncate content for API (20KB limit for better processing)
         const truncatedContent = truncateTextForAPI(extractedText, 20000);
-
-        console.log(`🔍 Extracted text: ${extractedText.length} chars, sending: ${truncatedContent.length} chars`);
 
         // Call extraction API
         const extractionResult = await extractAssetDetails(truncatedContent);
@@ -755,7 +723,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       }
     } else {
       // No manual provided, show modal for manual entry
-      console.log('🔍 No manual provided, showing manual entry form...');
       setShowAssetDetailsModal(true);
     }
   };
@@ -777,8 +744,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         created_by: user.id
       };
 
-      console.log('🔍 Creating parent asset with complete data:', completeAssetData);
-
       const { data, error } = await supabase
         .from('parent_assets')
         .insert([completeAssetData])
@@ -790,13 +755,11 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       }
 
       const createdAsset = data[0];
-      console.log('✅ Parent asset created:', createdAsset);
 
       // Upload manual if provided
       if (parentManualFile) {
         try {
           await uploadManualForAsset(parentManualFile, pendingParentAsset.name, createdAsset.id, true);
-          console.log('✅ Manual uploaded successfully');
         } catch (uploadError) {
           console.error('Manual upload failed:', uploadError);
           setParentFileUploadError(`Failed to upload manual: ${uploadError.message}`);
@@ -848,8 +811,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       return;
     }
 
-    console.log('🤖 [Manual Suggestion] Triggering child asset suggestions for:', selectedParentAsset.name);
-    
     // Get the site environment for the selected parent asset
     const siteEnvironment = userSites.find(s => s.id === selectedParentAsset.site_id)?.environment;
     
@@ -858,9 +819,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       ...selectedParentAsset,
       environment: siteEnvironment
     };
-    
-    console.log('🤖 [Manual Suggestion] Parent asset with environment:', parentAssetWithEnvironment);
-    
+
     // Call the existing requestChildAssetSuggestions function
     await requestChildAssetSuggestions(parentAssetWithEnvironment);
   };
@@ -958,8 +917,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   // Bulk Import Handler
   const handleBulkImport = async (validAssets) => {
     try {
-      console.log('🔄 Starting bulk import of', validAssets.length, 'assets');
-      
+
       const assetsToInsert = validAssets.map(asset => ({
         ...asset,
         site_id: userSites.length === 1 ? userSites[0].id : userSites[0].id, // Use first site for bulk import
@@ -977,9 +935,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         console.error('Bulk import error:', error);
         throw new Error(`Failed to import assets: ${error.message}`);
       }
-      
-      console.log('✅ Successfully imported', data.length, 'assets');
-      
+
       // Refresh assets list
       await loadParentAssets();
       
@@ -1489,8 +1445,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   const handleExportChildAssetPDF = async (childAsset) => {
     try {
       setError(null);
-      console.log('Generating PDF export...');
-      
+
       // Fetch the current PM plan for this child asset
       const { data: pmPlan, error: planError } = await supabase
         .from('pm_plans')
@@ -1595,8 +1550,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
-      console.log(`✅ PDF exported successfully: ${filename}`);
+
       setError(null); // Clear any previous errors on success
       
     } catch (error) {
@@ -1732,10 +1686,8 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
   const loadPMPlansForAsset = async (parentAssetId, childAssetId) => {
     try {
       setLoadingPlans(true);
-      console.log('Loading PM plans for child asset:', childAssetId);
-      
+
       const plans = await fetchPMPlansByAsset(parentAssetId, childAssetId);
-      console.log('Fetched plans:', plans);
       
       setExistingPlans(plans);
       setShowPlans(plans.length > 0);
@@ -1806,46 +1758,16 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
 
   // Request AI-powered child asset suggestions
   const requestChildAssetSuggestions = async (parentAsset) => {
-    console.log('🤖 [AI Suggestions] Starting requestChildAssetSuggestions...');
-    console.log('🤖 [AI Suggestions] Parent asset input:', parentAsset);
-    console.log('🤖 [AI Suggestions] Current state before request:', {
-      loadingSuggestions,
-      showSuggestionsModal,
-      suggestedAssets: suggestedAssets.length,
-      createdParentAsset: !!createdParentAsset,
-      error
-    });
-    
     try {
-      console.log('🤖 [AI Suggestions] Setting loading state to true');
       setLoadingSuggestions(true);
       setError(null);
-      
-      console.log('🤖 [AI Suggestions] Calling suggestChildAssets API with:', {
-        name: parentAsset.name,
-        make: parentAsset.make,
-        model: parentAsset.model,
-        category: parentAsset.category,
-        id: parentAsset.id
-      });
-      
+
       const suggestions = await suggestChildAssets(parentAsset);
-      
-      console.log('🤖 [AI Suggestions] API Response received:', suggestions);
-      console.log('🤖 [AI Suggestions] Response type:', typeof suggestions);
-      console.log('🤖 [AI Suggestions] Has child_assets property:', suggestions && 'child_assets' in suggestions);
-      console.log('🤖 [AI Suggestions] Child assets count:', suggestions?.child_assets?.length || 0);
-      
+
       if (suggestions && suggestions.child_assets && suggestions.child_assets.length > 0) {
-        console.log('🤖 [AI Suggestions] Valid suggestions received, setting state...');
         setSuggestedAssets(suggestions.child_assets);
         setSelectedSuggestions({});
-        console.log('🤖 [AI Suggestions] About to show modal by setting showSuggestionsModal to true');
         setShowSuggestionsModal(true);
-        console.log('🤖 [AI Suggestions] Modal state set, should be visible now');
-      } else {
-        console.log('🤖 [AI Suggestions] No child asset suggestions received or empty array');
-        console.log('🤖 [AI Suggestions] Full response for debugging:', JSON.stringify(suggestions, null, 2));
       }
     } catch (error) {
       console.error('🤖 [AI Suggestions ERROR] Error getting child asset suggestions:', error);
@@ -1857,14 +1779,7 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       });
       setError('Failed to get AI suggestions for child assets: ' + error.message);
     } finally {
-      console.log('🤖 [AI Suggestions] Setting loading state to false');
       setLoadingSuggestions(false);
-      console.log('🤖 [AI Suggestions] Final state after request:', {
-        loadingSuggestions: false,
-        showSuggestionsModal,
-        suggestedAssets: suggestedAssets.length,
-        error
-      });
     }
   };
 
@@ -1928,8 +1843,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
           status: 'active',
           created_by: user.id
         };
-
-        console.log('Inserting child asset data:', childAssetData);
 
         const { data: createdAsset, error } = await supabase
           .from('child_assets')
@@ -2048,14 +1961,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       const childManuals = loadedManuals[childAsset.id] || [];
       
       // Log manual information for debugging
-      if (childManuals.length > 0) {
-        console.log(`📚 [Child PM Plan] Found ${childManuals.length} manual(s) for child asset: ${childAsset.name}`);
-        childManuals.forEach((manual, index) => {
-          console.log(`📚 [Child PM Plan] Manual ${index + 1}: ${manual.original_name} (${manual.file_type})`);
-        });
-      } else {
-        console.log(`📚 [Child PM Plan] No manuals found for child asset: ${childAsset.name}`);
-      }
       
       // Prepare form data similar to PMPlanner
       const formData = {
@@ -2079,20 +1984,13 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
         parent_asset_id: parentAsset.id,
         child_asset_id: childAsset.id
       };
-      
-      console.log('Generating PM plan for child asset:', formData);
-      console.log('📋 Parent Asset ID being sent:', formData.parent_asset_id);
-      console.log('📋 Child Asset ID being sent:', formData.child_asset_id);
-      console.log('📋 Number of manuals being sent:', formData.manual_count);
-      
+
       // Call the AI API to generate the plan
       const aiGeneratedPlan = await generatePMPlan(formData);
 
       if (!aiGeneratedPlan) {
         throw new Error('No plan generated from API');
       }
-
-      console.log('PM Plan generated successfully:', aiGeneratedPlan);
 
       // Clean up timers before success
       cleanupTimers();
@@ -3598,12 +3496,6 @@ const ManageAssets = React.memo(({ onAssetUpdate, selectedSite, userSites: propU
       )}
 
       {/* AI Child Asset Suggestions Modal */}
-      {(() => {
-        console.log('🎭 [Modal Render Check] showSuggestionsModal:', showSuggestionsModal);
-        console.log('🎭 [Modal Render Check] suggestedAssets count:', suggestedAssets.length);
-        console.log('🎭 [Modal Render Check] createdParentAsset:', createdParentAsset);
-        return null;
-      })()}
       {showSuggestionsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">

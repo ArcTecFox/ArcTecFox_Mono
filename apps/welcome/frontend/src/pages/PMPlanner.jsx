@@ -186,7 +186,6 @@ function BulkImportModal({ isOpen, onClose, onBulkImport, assetCategories = [] }
       
       if (isCSV || isExcel) {
         setSelectedFile(file);
-        console.log('File selected:', file.name);
       } else {
         setErrorMessage('Please select a CSV or Excel file');
         event.target.value = '';
@@ -208,9 +207,7 @@ function BulkImportModal({ isOpen, onClose, onBulkImport, assetCategories = [] }
       const hasContent = values.some(value => value.length > 0);
       return hasContent;
     });
-    
-    console.log(`Found ${dataRows.length} data rows with content`);
-    
+
     if (dataRows.length > 10) {
       throw new Error(`Maximum 10 assets allowed, but found ${dataRows.length} rows with data.`);
     }
@@ -319,10 +316,8 @@ function BulkImportModal({ isOpen, onClose, onBulkImport, assetCategories = [] }
             
             // Convert to CSV
             const csvText = XLSX.utils.sheet_to_csv(worksheet);
-            console.log('Excel converted to CSV:', csvText);
-            
+
             const parsedAssets = parseCSV(csvText);
-            console.log('Parsed assets:', parsedAssets);
             
             await onBulkImport(parsedAssets);
             
@@ -348,10 +343,8 @@ function BulkImportModal({ isOpen, onClose, onBulkImport, assetCategories = [] }
         fileReader.onload = async (e) => {
           try {
             const csvText = e.target.result;
-            console.log('CSV content:', csvText);
-            
+
             const parsedAssets = parseCSV(csvText);
-            console.log('Parsed assets:', parsedAssets);
             
             await onBulkImport(parsedAssets);
             
@@ -749,8 +742,7 @@ export default function PMPlanner() {
       
       // Get user's accessible sites using the correct API function
       const sitesData = await fetchUserSites(user.id);
-      console.log('PMPlanner: Sites data received:', sitesData);
-      
+
       if (!sitesData || sitesData.length === 0) {
         setParentAssets([]);
         return;
@@ -758,8 +750,7 @@ export default function PMPlanner() {
       
       // The fetchUserSites returns sites with 'id' field, not 'site_id'
       const siteIds = sitesData.map(s => s.id).filter(Boolean);
-      console.log('PMPlanner: Site IDs extracted:', siteIds);
-      
+
       // Fetch parent assets for these sites
       const { data: assets, error: assetsError } = await supabase
         .from('parent_assets')
@@ -930,33 +921,19 @@ export default function PMPlanner() {
     
     try {
       setLoadingExistingPlans(true);
-      console.log('🔍 PMPlanner: Checking for existing plans...', {
-        parentAssetId,
-        childAssetId,
-        parentAsset: selectedParentAsset?.name,
-        childAsset: selectedChildAsset?.name
-      });
-      
+
       const plans = await fetchPMPlansByAsset(parentAssetId, childAssetId);
-      
-      console.log('📋 PMPlanner: Retrieved plans:', plans);
-      
+
       setExistingPlans(plans);
       setShowExistingPlans(plans.length > 0);
-      
+
       if (plans.length > 0) {
-        console.log(`✅ Found ${plans.length} existing PM plan(s) for this asset`);
-        
         // Populate form fields with data from the most recent plan
         const mostRecentPlan = plans[0];
         setValue('hours', mostRecentPlan.op_hours?.toString() || '');
         setValue('additional_context', mostRecentPlan.additional_context || '');
         setValue('environment', mostRecentPlan.env_desc || '');
         setValue('date_of_plan_start', mostRecentPlan.plan_start_date || '');
-        
-        console.log('📝 Populated form fields with existing plan data');
-      } else {
-        console.log('❌ No existing plans found for this asset');
       }
     } catch (error) {
       console.error('💥 Error checking for existing plans:', error);
@@ -1040,11 +1017,9 @@ export default function PMPlanner() {
       
       // Use the selected asset's data (child asset takes precedence if selected)
       const activeAsset = selectedChildAsset || selectedParentAsset;
-      console.log('PMPlanner: Generating plan for asset:', activeAsset);
-      
+
       // Get manuals for the selected asset
       const assetManuals = loadedManuals[activeAsset.id] || [];
-      console.log('PMPlanner: Found manuals for asset:', assetManuals);
       
       // Prepare manual data for the backend
       let userManualData = null;
@@ -1136,14 +1111,7 @@ export default function PMPlanner() {
           } : null
         }
       };
-      
-      console.log('PMPlanner: Sending data to backend:', formDataWithDefaults);
-      console.log('PMPlanner: Asset IDs being saved:', {
-        child_asset_id: formDataWithDefaults.child_asset_id,
-        is_child_plan: !!formDataWithDefaults.child_asset_id,
-        asset_name: formDataWithDefaults.name
-      });
-      
+
       const aiGeneratedPlan = await generatePMPlan(formDataWithDefaults);
       
       setGeneratedPlan(aiGeneratedPlan);
@@ -1268,7 +1236,6 @@ export default function PMPlanner() {
 
   // Handle form errors
   const onError = (errors) => {
-    console.log("Form validation errors:", errors);
     setMessage("Please fix the errors below before submitting.");
     setMessageType("error");
   };
@@ -1295,7 +1262,6 @@ export default function PMPlanner() {
       const result = await storageService.uploadUserManual(file, assetName, user.id);
       
       if (result.success) {
-        console.log('User manual uploaded successfully:', result);
         return result;
       } else {
         throw new Error(result.error);
@@ -1313,9 +1279,6 @@ export default function PMPlanner() {
   try {
     setExporting(true);
     setMessage("");
-    
-    console.log('🔄 Starting export process...');
-    
     // Check if user is authenticated
     if (!user) {
       throw new Error('User not authenticated');
@@ -1330,7 +1293,6 @@ export default function PMPlanner() {
     
     // Set the auth session manually
     const { data: { session } } = await supabase.auth.getSession();
-    console.log('Export session check:', session?.user?.id);
     
     // Test direct query instead of stored procedure
     const { data: testData, error: testError } = await supabase
@@ -1342,9 +1304,6 @@ export default function PMPlanner() {
         )
       `)
       .limit(5);
-    
-    console.log('Direct query test - data:', testData);
-    console.log('Direct query test - error:', testError);
 
     // Use the same query as Scheduled Maintenance instead of stored procedure
     const { data, error } = await supabase
@@ -1362,10 +1321,7 @@ export default function PMPlanner() {
           )
         )
       `);
-    
-    console.log('RPC result - data:', data);
-    console.log('RPC result - error:', error);
-    
+
     if (error) {
       throw new Error(`Database error: ${error.message}`);
     }
@@ -1373,9 +1329,7 @@ export default function PMPlanner() {
     if (!data || data.length === 0) {
       throw new Error('No data found to export');
     }
-    
-    console.log(`📊 Retrieved ${data.length} records for export`);
-    
+
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(data);
     
@@ -1400,8 +1354,6 @@ export default function PMPlanner() {
     setMessage(`✅ Export completed successfully! Downloaded ${data.length} records to ${filename}`);
     setMessageType("success");
     
-    console.log(`✅ Export completed: ${filename}`);
-    
   } catch (error) {
     console.error("❌ Export error:", error);
     setMessage(`❌ Export failed: ${error.message}`);
@@ -1420,8 +1372,6 @@ export default function PMPlanner() {
     setMessage("");
     setGeneratedPlan(null);
 
-    console.log(`🚀 Starting bulk import of ${parsedAssets.length} assets`);
-
     const results = [];
     const errors = [];
     const currentSiteId = selectedSite || (userSites.length === 1 ? userSites[0].id : null);
@@ -1433,8 +1383,6 @@ export default function PMPlanner() {
         try {
           setCurrentAssetName(asset.name || `Asset ${i + 1}`);
           // Don't update progress here - wait until completion
-          
-          console.log(`📝 Processing asset ${i + 1}/${parsedAssets.length}:`, asset.name);
 
           const siteData = userSites.find(s => s.id === currentSiteId);
           
@@ -1452,8 +1400,6 @@ export default function PMPlanner() {
             siteId: currentSiteId
           };
 
-          console.log(`📤 Sending asset data to API:`, assetData);
-          
           const aiGeneratedPlan = await generatePMPlan(assetData);
           
           if (!aiGeneratedPlan) {
@@ -1465,9 +1411,6 @@ export default function PMPlanner() {
             plan: aiGeneratedPlan,
             success: true
           });
-
-          console.log(`✅ Successfully processed: ${asset.name}`);
-          console.log(`📋 Generated plan:`, aiGeneratedPlan);
           
           // Update progress AFTER successful completion
           setBulkProgress(results.length);
@@ -1512,8 +1455,6 @@ export default function PMPlanner() {
 
       setMessage(summaryMessage);
       setMessageType(successCount > 0 ? "success" : "error");
-
-      console.log(`🏁 Bulk import completed: ${successCount} successes, ${errorCount} errors`);
 
     } catch (error) {
       console.error("❌ Bulk import error:", error);

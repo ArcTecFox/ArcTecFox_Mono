@@ -81,18 +81,14 @@ const CompanyManagement = () => {
   const loadCompanies = async (userIsSuperAdmin = isSuperAdmin, adminSites = null) => {
     try {
       setLoading(true);
-      
-      console.log('🔍 loadCompanies - userIsSuperAdmin:', userIsSuperAdmin);
-      console.log('🔍 loadCompanies - adminSites:', adminSites);
-      
+
       // Super admins see all companies, company admins see only their companies
       let query = supabase.from('companies').select('*').order('name');
-      
+
       // If not super admin, filter to only companies the user is admin of through sites
       if (!userIsSuperAdmin && adminSites && adminSites.length > 0) {
         const companyIds = [...new Set(adminSites.map(site => site.sites?.companies?.id).filter(Boolean))];
-        console.log('🔍 loadCompanies - extracted companyIds:', companyIds);
-        
+
         if (companyIds.length > 0) {
           query = query.in('id', companyIds);
         }
@@ -101,7 +97,6 @@ const CompanyManagement = () => {
       const { data, error } = await query;
 
       if (error) throw error;
-      console.log('🔍 loadCompanies - loaded companies:', data);
       setCompanies(data || []);
       
       // Auto-select first company if available

@@ -162,26 +162,3 @@ return (
 
 ## CURRENT ISSUES
 
-### Toast Notification - Timestamp-based State Pattern (RESOLVED)
-**Issue**: Toast notifications from `ParentPlanLoadingModal` appear on first "Generate PM Plan" click but not on subsequent clicks.
-
-**Root Cause**: React's useEffect dependency optimization. When using a boolean state like `parentPlanSuccess`, React sees identical state transitions (false→true→false→true) and optimizes away subsequent useEffect executions, preventing the toast from appearing.
-
-**Solution**: Use timestamp-based state instead of boolean. Each success generates a unique timestamp value using `Date.now()`, forcing useEffect to execute every time.
-
-**Implementation** (ManageAssets.jsx):
-```javascript
-// Line 157: Use null instead of false
-const [parentPlanSuccessTimestamp, setParentPlanSuccessTimestamp] = useState(null);
-
-// Line 638: Set unique timestamp on success
-setParentPlanSuccessTimestamp(Date.now());
-
-// Line 2267: Convert to boolean for modal prop
-success={!!parentPlanSuccessTimestamp}
-
-// Lines 557, 2272: Reset to null
-setParentPlanSuccessTimestamp(null);
-```
-
-**General Pattern**: Use timestamp-based state (`Date.now()`) whenever useEffect needs to respond to repeated events, not just state changes. This prevents React's dependency array optimization from skipping executions.
