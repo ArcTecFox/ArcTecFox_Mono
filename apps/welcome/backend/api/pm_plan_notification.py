@@ -12,11 +12,11 @@ from typing import Optional
 router = APIRouter()
 
 # Initialize Resend with API key - reuse existing pattern
-if os.getenv("RESEND_KEY"):
-    resend.api_key = os.getenv("RESEND_KEY")
+if os.getenv("RESEND_API_KEY"):
+    resend.api_key = os.getenv("RESEND_API_KEY")
     print("✅ Resend configured for PM plan notifications")
 else:
-    print("⚠️ RESEND_KEY not set - PM plan notifications will be simulated")
+    print("⚠️ RESEND_API_KEY not set - PM plan notifications will be simulated")
 
 class PMPlanNotificationRequest(BaseModel):
     user_name: str
@@ -31,9 +31,9 @@ async def send_pm_plan_notification_email(request: PMPlanNotificationRequest):
     This is a utility function that can be called from other endpoints
     """
     try:
-        # Check if RESEND_KEY is configured
-        if not os.getenv("RESEND_KEY"):
-            print("Warning: RESEND_KEY not configured, simulating PM plan notification")
+        # Check if RESEND_API_KEY is configured
+        if not os.getenv("RESEND_API_KEY"):
+            print("Warning: RESEND_API_KEY not configured, simulating PM plan notification")
             print(f"Simulated notification: {request.user_name} ({request.user_email}) from {request.company_name}")
             return {
                 "success": True,
