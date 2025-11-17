@@ -50,16 +50,16 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
     """Send email notification to support when user requests access"""
     import resend
 
-    # Check if RESEND_KEY is configured
-    if not os.getenv("RESEND_KEY"):
-        print("Warning: RESEND_KEY not configured, simulating access request notification")
+    # Check if RESEND_API_KEY is configured
+    if not os.getenv("RESEND_API_KEY"):
+        print("Warning: RESEND_API_KEY not configured, simulating access request notification")
         print(f"Simulated notification to support@arctecfox.co:")
         print(f"  New access request from: {full_name} ({email})")
         print(f"  Company: {company_name or 'Not specified'}")
         return {"status": "simulated"}
 
     # Initialize Resend
-    resend.api_key = os.getenv("RESEND_KEY")
+    resend.api_key = os.getenv("RESEND_API_KEY")
 
     # Create access request notification email
     subject = f"New Access Request - {full_name} from {company_name or 'Unknown Company'}"

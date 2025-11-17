@@ -545,7 +545,20 @@ async def lead_capture_endpoint(
         
         # Get service client for database operations
         service_client = get_service_supabase_client()
-        
+
+        # Check if email already has a free PM plan
+        logger.info(f"🔍 Checking if {lead_request.email} already has a free plan...")
+        existing_lead = service_client.table("pm_leads").select("id,submitted_at").eq("email", lead_request.email).execute()
+
+        if existing_lead.data and len(existing_lead.data) > 0:
+            logger.warning(f"⚠️ Email {lead_request.email} already has a free plan")
+            raise HTTPException(
+                status_code=400,
+                detail=f"This email address has already been used to generate a free PM plan. Each email can only generate one free plan."
+            )
+
+        logger.info(f"✅ Email {lead_request.email} is eligible for a free plan")
+
         # Step 1: Generate AI plan
         if not plan_data.name or not plan_data.category:
             raise HTTPException(status_code=400, detail="Missing required fields: name and category")
