@@ -402,6 +402,15 @@ export default function Home() {
           />
         )}
 
+        {showLoadingModal && (
+          <ParentPlanLoadingModal
+            isOpen={showLoadingModal}
+            status={loadingStatus}
+            progress={loadingProgress}
+            onClose={() => setShowLoadingModal(false)}
+          />
+        )}
+
         <footer className="mt-12 border-t py-6 text-center text-sm text-gray-600">
           © {new Date().getFullYear()} ArcTecFox. Plan, Prevent, Perform.
         </footer>
