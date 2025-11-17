@@ -550,7 +550,7 @@ function PlanLimitOverrideModal({ isOpen, onClose, onProceed, limitData, isSuper
           
           {isSuperAdmin && (
             <p className="text-xs text-gray-500 mt-3">
-              As a Super Admin, you can override plan limits. Use this carefully.
+              As a Site Admin, you can override plan limits. Use this carefully.
             </p>
           )}
         </div>

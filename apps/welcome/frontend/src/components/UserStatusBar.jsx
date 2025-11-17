@@ -33,14 +33,14 @@ export default function UserStatusBar() {
     );
   }
 
-  // Returning-users link style
+  // Guest view - show Sign In button
   return (
     <button
       onClick={() => navigate('/login')}
       className="bg-white border px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
       title="Returning users"
     >
-      Returning users → Sign in
+      Sign in
     </button>
   );
 }

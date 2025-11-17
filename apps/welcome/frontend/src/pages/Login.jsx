@@ -1,9 +1,10 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { signIn, signUp, signInWithGoogle, isProfileComplete, validatePassword, shouldUseGoogleAuth } from "../api";
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { signIn, signUp, signInWithGoogle, isProfileComplete, validatePassword, shouldUseGoogleAuth, updatePassword } from "../api";
 import { useAuth } from "../hooks/useAuth";
 
 function Login() {
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -12,8 +13,21 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [passwordErrors, setPasswordErrors] = useState([]);
+  const [isInviteFlow, setIsInviteFlow] = useState(false);
   const navigate = useNavigate();
-  const { loginWithGoogle } = useAuth();
+  const { loginWithGoogle, user } = useAuth();
+
+  // Detect invite flow from URL parameter
+  useEffect(() => {
+    const inviteParam = searchParams.get('invite');
+    const hash = window.location.hash;
+
+    if (inviteParam === 'true' || hash.includes('type=invite') || hash.includes('type=recovery')) {
+      console.log('🔑 Invite/recovery flow detected');
+      setIsInviteFlow(true);
+      setConfirmationMessage("Welcome! Please set your password to complete your account setup.");
+    }
+  }, [searchParams]);
 
   // Check for Gmail email on email change
   const handleEmailChange = (e) => {
@@ -56,6 +70,48 @@ function Login() {
     }
   };
 
+  const handlePasswordSetup = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    // Validate password
+    if (!password || password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      setLoading(false);
+      return;
+    }
+
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      setError("Password requirements not met: " + validation.errors.join(", "));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('🔐 Setting password for invited user...');
+      await updatePassword(password);
+      setConfirmationMessage("✅ Password set successfully! Redirecting to dashboard...");
+      setLoading(false);
+      // Redirect to dashboard after successful password setup
+      setTimeout(() => {
+        console.log('✅ Password set successfully, redirecting to dashboard');
+        navigate('/dashboard');
+      }, 1500);
+    } catch (err) {
+      console.error("❌ Password setup error:", err);
+      setError(err.message || "Failed to set password. Please try again.");
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -94,8 +150,8 @@ function Login() {
           if (!user) {
             throw new Error("No user data returned");
           }
-          const profileCompleted = await isProfileComplete(user.id);
-          navigate(profileCompleted ? "/dashboard" : "/complete-profile");
+          // Skip profile completion check - redirect directly to dashboard
+          navigate("/dashboard");
         } catch (err) {
           console.error("Sign in error:", err);
           setError(err.message);
@@ -108,6 +164,84 @@ function Login() {
       setLoading(false);
     }
   };
+
+  // Show password setup form for invite flow
+  if (isInviteFlow) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-md">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome to ArcTecFox!</h2>
+            <p className="text-gray-600">Set your password to complete your account setup</p>
+          </div>
+
+          {confirmationMessage && <p className="text-green-500 text-center text-sm">{confirmationMessage}</p>}
+          {error && <p className="text-red-500 text-center text-sm">{error}</p>}
+
+          <form className="space-y-4 mt-6" onSubmit={handlePasswordSetup}>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Create Password
+              </label>
+              <input
+                type="password"
+                required
+                className="block w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter your password"
+                value={password}
+                onChange={handlePasswordChange}
+                minLength={6}
+              />
+              <p className="text-xs text-gray-500 mt-1">Must be at least 6 characters</p>
+              {passwordErrors.length > 0 && (
+                <div className="mt-2 text-sm text-red-600">
+                  <p className="font-medium">Password requirements:</p>
+                  <ul className="list-disc list-inside">
+                    {passwordErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                required
+                className="block w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || passwordErrors.length > 0}
+              className="w-full p-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? "Setting password..." : "Set Password & Continue"}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-500">
+              By setting your password, you agree to our Terms of Service and Privacy Policy
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">

@@ -54,6 +54,7 @@ from api.pm_plan_notification import router as pm_plan_notification_router
 from api.send_invitation import InvitationRequest, send_invitation_email
 from api.send_test_invitation import TestInvitationRequest, send_test_invitation_email
 from api.add_existing_user import AddExistingUserRequest, AddExistingUserResponse, add_existing_user_to_site
+from api.create_site_admin import SiteAdminRequest, create_site_admin
 from api.pm_routes import router as pm_routes_router
 
 # Load environment variables
@@ -916,6 +917,16 @@ async def send_test_invitation_endpoint(
     """Send test invitation email without any database operations - requires authenticated user"""
     logger.info(f"User {user.email} sending test invitation")
     return await send_test_invitation_email(request)
+
+# Create site admin endpoint - requires site admin authentication
+@app.post("/api/create-site-admin")
+async def create_site_admin_endpoint(
+    request: SiteAdminRequest,
+    user: AuthenticatedUser = Depends(verify_supabase_token)
+):
+    """Create a new site admin user - only accessible by existing site admins"""
+    logger.info(f"Site admin {user.email} creating new site admin: {request.email}")
+    return await create_site_admin(request, current_user_id=user.id)
 
 @app.post("/api/add-existing-user", response_model=AddExistingUserResponse)
 async def add_existing_user_endpoint(
