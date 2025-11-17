@@ -418,7 +418,7 @@ const CompanyManagement = () => {
               {isSuperAdmin && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Plan Limit (Super Admin only)
+                    Plan Limit (Site Admin only)
                   </label>
                   <input
                     type="number"
@@ -1056,7 +1056,7 @@ const CompanyManagement = () => {
                             <div 
                               className={`text-sm text-gray-900 p-1 rounded ${isSuperAdmin ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                               onClick={() => isSuperAdmin && startEditing(site.id, 'plan_limit', site.plan_limit, false)}
-                              title={isSuperAdmin ? 'Click to edit (Super Admin only)' : 'Read only - Super Admin required to edit'}
+                              title={isSuperAdmin ? 'Click to edit (Site Admin only)' : 'Read only - Site Admin required to edit'}
                             >
                               {site.plan_limit !== null ? site.plan_limit : <span className="italic text-gray-400">No limit set{isSuperAdmin ? ' (click to set)' : ''}</span>}
                             </div>

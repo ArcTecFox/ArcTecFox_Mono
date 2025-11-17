@@ -2,11 +2,15 @@
 Access Request API endpoints for email authentication workflow
 """
 import os
+import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import uuid
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Reuse existing auth and database infrastructure
 from auth import verify_supabase_token, AuthenticatedUser
@@ -18,7 +22,7 @@ router = APIRouter()
 class AccessRequestCreate(BaseModel):
     email: EmailStr
     full_name: str
-    lead_id: uuid.UUID
+    lead_id: Optional[uuid.UUID] = None
 
 class AccessRequestResponse(BaseModel):
     id: str
@@ -133,21 +137,28 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
 async def create_access_request(request: AccessRequestCreate):
     """Public endpoint to create access request - linked to test plan"""
     try:
+        logger.info(f"[RequestAccess] New access request for email: {request.email}, lead_id: {request.lead_id}")
         supabase = get_service_supabase_client()
-        
+
         # Check if email already has a pending request
         existing_request = supabase.table("access_requests").select("*").eq("email", request.email).eq("status", "pending").execute()
+        logger.info(f"[RequestAccess] Existing pending requests check: {len(existing_request.data)} found")
         
         if existing_request.data:
             raise HTTPException(status_code=400, detail="An access request is already pending for this email")
         
         # Check if user already exists in auth
         try:
+            logger.info(f"[RequestAccess] Checking if user exists in Supabase auth: {request.email}")
             existing_user = supabase.auth.admin.get_user_by_email(request.email)
             if existing_user.data:
+                logger.warning(f"[RequestAccess] User already exists: {request.email}")
                 raise HTTPException(status_code=400, detail="An account with this email already exists")
+        except HTTPException:
+            raise
         except Exception:
             # User doesn't exist, which is what we want
+            logger.info(f"[RequestAccess] User does not exist (good): {request.email}")
             pass
         
         # Get company name from lead if available
@@ -168,13 +179,18 @@ async def create_access_request(request: AccessRequestCreate):
         }
         
         result = supabase.table("access_requests").insert(access_request_data).execute()
-        
+
         if not result.data:
+            logger.error(f"[RequestAccess] Failed to insert access request for: {request.email}")
             raise HTTPException(status_code=500, detail="Failed to create access request")
-        
+
+        logger.info(f"[RequestAccess] Access request created successfully: {result.data[0].get('id')}")
+
         # Send notification email to support
+        logger.info(f"[RequestAccess] Sending notification email to support for: {request.email}")
         await send_notification_email(request.email, request.full_name, company_name)
-        
+
+        logger.info(f"[RequestAccess] ✅ Access request flow completed for: {request.email}")
         return {
             "success": True,
             "message": "Access request submitted successfully. You will receive an email when your request is reviewed."
@@ -278,6 +294,8 @@ async def approve_access_request(
 
         # Create Supabase auth user with invite
         try:
+            logger.info(f"[ApproveAccess] Creating Supabase auth user for: {access_request['email']}")
+
             # Create auth user and send Supabase invite email
             auth_response = supabase.auth.admin.create_user({
                 "email": access_request["email"],
@@ -288,13 +306,16 @@ async def approve_access_request(
             })
 
             if not auth_response.user:
+                logger.error(f"[ApproveAccess] Supabase create_user returned no user for: {access_request['email']}")
                 raise HTTPException(status_code=500, detail="Failed to create user account")
 
             user_id = auth_response.user.id
-            print(f"✅ Auth user created: {user_id}")
+            logger.info(f"[ApproveAccess] ✅ Supabase user created successfully - user_id: {user_id}, email: {access_request['email']}")
 
+        except HTTPException:
+            raise
         except Exception as e:
-            print(f"❌ Failed to create auth user: {str(e)}")
+            logger.error(f"[ApproveAccess] ❌ Failed to create Supabase auth user for {access_request['email']}: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
 
         # Create user record
@@ -330,14 +351,21 @@ async def approve_access_request(
         try:
             # Get frontend URL from environment (production URL)
             frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            redirect_url = f"{frontend_url}/login?invite=true"
+
+            logger.info(f"[ApproveAccess] Sending Supabase invite email to: {access_request['email']}, redirect_to: {redirect_url}")
 
             invite_response = supabase.auth.admin.invite_user_by_email(
                 access_request["email"],
-                {"redirect_to": f"{frontend_url}/login"}
+                {"redirect_to": redirect_url}
             )
-            print(f"✅ Supabase invite sent to {access_request['email']}: {invite_response}")
+
+            logger.info(f"[ApproveAccess] ✅ Supabase invite email sent successfully to {access_request['email']}")
+            logger.debug(f"[ApproveAccess] Invite response details: {invite_response}")
+
         except Exception as e:
-            print(f"⚠️ Failed to send Supabase invite: {str(e)} (user account created)")
+            logger.error(f"[ApproveAccess] ⚠️ Failed to send Supabase invite email to {access_request['email']}: {str(e)}", exc_info=True)
+            logger.error(f"[ApproveAccess] Note: User account was created (user_id: {user_id}), but invite email failed")
 
         print(f"✅ Access request approved for {access_request['email']}")
 

@@ -160,5 +160,144 @@ return (
 4. **Check existing patterns before creating new ones**
 5. **Prompt workflow**: All Gemini prompt reviews/updates must start with gemini-prompt-engineer agent for optimization, then ai-engineer agent implements the optimized prompts
 
-## CURRENT ISSUES
+## CURRENT WORK IN PROGRESS
+
+### Supabase Authentication Testing - Request Access Flow
+
+**Purpose**: Testing standalone Supabase authentication for new user onboarding (separate from existing invitation system).
+
+#### Implementation Status: ✅ Complete
+
+**What's Been Implemented:**
+
+1. **Backend Changes** (`apps/welcome/backend/api/access_requests.py`):
+   - ✅ Made `lead_id` optional (line 21) - allows testing without PM plan dependency
+   - ✅ Added comprehensive logging with `[RequestAccess]` and `[ApproveAccess]` prefixes
+   - ✅ Logs track: email submission, Supabase user creation, invite email sending
+   - ✅ Full exception logging for debugging Supabase issues
+
+2. **Frontend Components**:
+   - ✅ Created `RequestAccessModal.jsx` - email input modal with "Request Access" and "Cancel" buttons
+   - ✅ Updated `UserStatusBar.jsx` - added blue "Request Access" button next to white "Sign in" button
+   - ✅ Hardcoded "Test User" for full_name (testing only)
+   - ✅ Enhanced console logging for frontend debugging
+
+3. **Email Configuration**:
+   - ✅ Resend API key added to `.env` (for admin notifications to support@arctecfox.ai)
+   - ✅ arctecfox.ai domain verified with Resend
+   - ✅ Supabase handles user invite emails (password setup links)
+
+#### Current Testing Status: 🧪 In Progress
+
+**Completed:**
+- ✅ Request Access button visible on landing page
+- ✅ Modal opens and accepts email input
+- ✅ Backend successfully creates access request in database
+- ✅ Fixed duplicate email constraint issue (database allows only one request per email)
+- ✅ Resend configuration complete (admin notifications ready)
+
+**Next Steps:**
+1. Restart backend server to load RESEND_KEY environment variable
+2. Submit new access request with different email (e.g., `willisreed17+test2@outlook.com`)
+3. Verify Resend admin notification sent to support@arctecfox.ai
+4. Login as SuperAdmin → Approve access request
+5. Check backend logs for Supabase user creation and invite email
+6. Check user email for Supabase password setup link
+7. Complete password setup and test login
+
+#### Known Issues:
+
+**Database Constraint:**
+- `access_requests` table has unique constraint on `email` column
+- Code currently only checks for "pending" status (line 144)
+- Database blocks ALL duplicate emails (pending, approved, rejected)
+- **Recommended fix**: Update duplicate check to handle all statuses with better error messages
+
+**For Testing:**
+- Use email aliases for multiple tests: `email+test1@domain.com`, `email+test2@domain.com`
+- Or manually delete old access_request records from Supabase dashboard
+
+#### File Locations:
+- Backend API: `apps/welcome/backend/api/access_requests.py`
+- Frontend Modal: `apps/welcome/frontend/src/components/RequestAccessModal.jsx`
+- User Status Bar: `apps/welcome/frontend/src/components/UserStatusBar.jsx`
+- Environment: `apps/welcome/backend/.env` (contains RESEND_KEY)
+
+
+
+## PROPOSED IMPROVEMENTS
+
+### Multi-Company User Management Redesign
+
+**Current Limitation**: Users cannot be added to multiple companies. A user authenticated to Company A cannot be added to Company B sites due to company scoping validation in `add_existing_user.py` (lines 106-149).
+
+**Proposed Solution**: Follow B2B SaaS best practices (Slack, GitHub, Asana pattern)
+
+#### Core Principle: Users are Global, Access is Scoped
+- Users exist independently (one email = one account)
+- Access is granted per site via `site_users` table
+- Roles are assigned per site
+- RLS policies enforce data isolation
+
+#### Simplified User Management Workflow
+
+**For Site Admins - Single "Add User" Modal:**
+
+```
+1. Click [+ Add User] button
+2. Enter email address
+3. System auto-detects:
+   - ✓ Existing user → Shows current company/site memberships → [Add to This Site]
+   - ○ New user → Shows "will send invitation" → [Send Invitation]
+4. Select role (Viewer, User, Editor, Admin)
+5. Submit → Done (instant for existing, email for new)
+```
+
+**Key Changes Required:**
+
+1. **Backend** (`apps/welcome/backend/api/add_existing_user.py`):
+   ```python
+   # REMOVE company restriction validation (lines 106-149)
+   # Allow users to be added to any company
+   # RLS policies still enforce they can only see data they have access to
+   ```
+
+2. **Frontend** (Add to `CompanyManagement.jsx` or create `SiteUserManagement.jsx`):
+   - Smart email search with real-time user lookup
+   - Show existing user's current memberships
+   - Single modal handles both existing and new users
+   - Inline role editing for existing site users
+
+3. **No Schema Changes**: Existing `site_users` table already supports many-to-many relationship between users and sites
+
+#### Benefits
+- ✅ Supports contractors, consultants, multi-site employees
+- ✅ Minimal code changes (remove 1 validation, add 1 UI component)
+- ✅ Familiar pattern (matches industry standards)
+- ✅ Maintains security via existing RLS policies
+- ✅ ~3 hours implementation time
+
+#### User Flows
+
+**Flow 1: Add Existing User (Cross-Company)**
+```
+Site Admin → [+ Add User] → Types "john@acme.com" →
+System finds: ✓ User exists (currently at Company A) →
+Admin selects role: Editor → [Add to Site] → Done ✓ (instant access)
+```
+
+**Flow 2: Invite New User**
+```
+Site Admin → [+ Add User] → Types "newperson@example.com" →
+System shows: ○ New user (will send invitation) →
+Admin selects role: User → [Send Invitation] →
+Email sent ✉ (7-day link) → User clicks link → Auto-added to site
+```
+
+#### Implementation Plan
+1. **Phase 1** (15 min): Remove company validation in `add_existing_user.py`
+2. **Phase 2** (2 hours): Build unified user management UI with smart email search
+3. **Phase 3** (1 hour): Add real-time user search functionality
+
+**Status**: Proposed, awaiting implementation approval
 

@@ -72,7 +72,7 @@ export default function App() {
                     <CompanyManagement />
                   </ProtectedRoute>
                 } />
-                <Route path="/admin/super-admins" element={
+                <Route path="/admin/site-admins" element={
                   <ProtectedRoute>
                     <SuperAdminManagement />
                   </ProtectedRoute>

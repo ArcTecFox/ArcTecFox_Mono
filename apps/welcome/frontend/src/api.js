@@ -69,6 +69,15 @@ export async function signIn(email, password) {
   return data.user;
 }
 
+// Update user password (for invite flow)
+export async function updatePassword(newPassword) {
+  const { data, error } = await supabase.auth.updateUser({
+    password: newPassword
+  });
+  if (error) throw error;
+  return data;
+}
+
 // ✅ UPDATED: Fixed Google OAuth sign-in function
 export async function signInWithGoogle() {
   try {
@@ -2123,6 +2132,44 @@ export const removeUserRoleFromCompany = async (userId, siteId) => {
 // DEPRECATED: Use createUserForSite instead
 export const createUserByEmail = async (email, siteId, fullName = '', roleId = null) => {
   return await createUserForSite(email, siteId, fullName, roleId);
+};
+
+// Create site admin user - site/company agnostic
+export const createSiteAdmin = async (email, fullName = '') => {
+  try {
+    console.log('🔧 Creating site admin:', { email, fullName });
+
+    // Get auth token for backend call
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('Authentication required to create site admin');
+    }
+
+    // Call backend endpoint to create site admin
+    const response = await fetch(`${BACKEND_URL}/api/create-site-admin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        email: email,
+        full_name: fullName
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Failed to create site admin');
+    }
+
+    const result = await response.json();
+    console.log('✅ Site admin created successfully:', result);
+    return result;
+  } catch (error) {
+    console.error("❌ Error creating site admin:", error);
+    throw error;
+  }
 };
 
 // AI-Powered Parent Plan Generation with authentication

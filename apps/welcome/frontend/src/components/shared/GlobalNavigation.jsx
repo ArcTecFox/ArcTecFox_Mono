@@ -5,9 +5,10 @@ import { isUserSiteAdmin, getUserAdminSites, fetchAccessRequests } from "../../a
 import UserStatusBar from "../UserStatusBar";
 
 // Admin Menu Component
-function AdminMenu({ adminSites = [], pendingAccessRequests = 0 }) {
+function AdminMenu({ adminSites = [], pendingAccessRequests = 0, isSiteAdmin = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleNavigation = (path) => {
     navigate(path);
@@ -16,9 +17,8 @@ function AdminMenu({ adminSites = [], pendingAccessRequests = 0 }) {
 
   const siteNames = adminSites.map(ac => `${ac.sites?.companies?.name || 'Unknown Company'} - ${ac.sites?.name || 'Unknown Site'}`).join(', ');
   const roleNames = [...new Set(adminSites.map(ac => ac.roles?.name).filter(Boolean))].join(', ');
-  const isSuperAdmin = adminSites.some(ac => ac.roles?.name === 'super_admin');
   const isCompanyAdmin = adminSites.some(ac => ac.roles?.name === 'company_admin');
-  const canManageCompanies = isSuperAdmin || isCompanyAdmin;
+  const canManageCompanies = isSiteAdmin || isCompanyAdmin;
 
   return (
     <div className="relative">
@@ -71,12 +71,12 @@ function AdminMenu({ adminSites = [], pendingAccessRequests = 0 }) {
                     Manage Companies/Sites
                   </button>
                 )}
-                {isSuperAdmin && (
+                {isSiteAdmin && (
                   <button
-                    onClick={() => handleNavigation('/admin/super-admins?tab=access-requests')}
+                    onClick={() => handleNavigation('/admin/site-admins?tab=access-requests')}
                     className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between"
                   >
-                    <span>Super Admin Management</span>
+                    <span>Site Admin Management</span>
                     {pendingAccessRequests > 0 && (
                       <span className="ml-2 text-xs text-gray-500">({pendingAccessRequests})</span>
                     )}
@@ -128,10 +128,10 @@ export default function GlobalNavigation() {
           getUserAdminSites(user.id)
         ]);
         
-        // Check for pending access requests if user is super admin
+        // Check for pending access requests if user is site admin
         let pendingCount = 0;
-        const isSuperAdmin = userAdminSites.some(site => site.roles?.name === 'super_admin');
-        if (isSuperAdmin) {
+        const isSiteAdmin = user?.site_admin || false;
+        if (isSiteAdmin) {
           try {
             const requests = await fetchAccessRequests('pending');
             pendingCount = requests.length;
@@ -195,7 +195,7 @@ export default function GlobalNavigation() {
           {/* Menu and User Status */}
           <div className="flex items-center space-x-4">
             {user && (
-              <AdminMenu adminSites={adminSites} pendingAccessRequests={pendingAccessRequests} />
+              <AdminMenu adminSites={adminSites} pendingAccessRequests={pendingAccessRequests} isSiteAdmin={isAdmin} />
             )}
             <UserStatusBar />
           </div>

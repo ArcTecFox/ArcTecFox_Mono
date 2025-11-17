@@ -9,10 +9,10 @@ import GlobalNavigation from "../components/shared/GlobalNavigation";
 import GlobalFooter from "../components/shared/GlobalFooter";
 
 export default function UnifiedLayout() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { needsToSAcceptance, loading: tosLoading, handleAcceptToS } = useToSCheck();
+  const { needsToSAcceptance, loading: tosLoading, markToSAsAccepted } = useToSCheck(user);
 
   // Redirect authenticated users from landing to dashboard
   useEffect(() => {
@@ -42,9 +42,11 @@ export default function UnifiedLayout() {
       <GlobalFooter />
 
       {/* ToS Modal */}
-      {needsToSAcceptance && (
-        <ToSAcceptanceModal 
-          onAccept={handleAcceptToS}
+      {needsToSAcceptance && user && (
+        <ToSAcceptanceModal
+          user={user}
+          onAccept={markToSAsAccepted}
+          onReject={logout}
         />
       )}
 

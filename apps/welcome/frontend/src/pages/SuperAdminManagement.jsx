@@ -3,11 +3,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../hooks/use-toast';
 import AccessRequestsTab from '../components/AccessRequestsTab';
-import { 
+import {
   fetchAllRoles,
   updateUserRoleInCompany,
   removeUserRoleFromCompany,
-  createUserByEmail,
+  createSiteAdmin,
   fetchAccessRequests,
   approveAccessRequest,
   rejectAccessRequest,
@@ -22,13 +22,13 @@ const SuperAdminManagement = () => {
   // Tab state - initialize from URL (default to access-requests)
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'access-requests');
   
-  // Super admin state
-  const [superAdmins, setSuperAdmins] = useState([]);
+  // Site admin state
+  const [siteAdmins, setSiteAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [allRoles, setAllRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showAddSuperAdmin, setShowAddSuperAdmin] = useState(false);
+  const [showAddSiteAdmin, setShowAddSiteAdmin] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminName, setNewAdminName] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -42,7 +42,7 @@ const SuperAdminManagement = () => {
   const [processingRequestId, setProcessingRequestId] = useState(null);
 
   useEffect(() => {
-    loadSuperAdmins();
+    loadSiteAdmins();
     loadAllUsers();
     loadAllRoles();
     loadAccessRequests();
@@ -62,45 +62,23 @@ const SuperAdminManagement = () => {
     };
   }, []);
 
-  const loadSuperAdmins = async () => {
+  const loadSiteAdmins = async () => {
     try {
       setLoading(true);
-      
+
+      // Query users table for site_admin = true
       const { data, error } = await supabase
-        .from('company_users')
-        .select(`
-          user_id,
-          company_id,
-          role_id,
-          roles!inner (
-            id,
-            name
-          ),
-          users (
-            id,
-            email,
-            full_name,
-            created_at
-          ),
-          companies (
-            id,
-            name
-          )
-        `)
-        .eq('roles.name', 'super_admin');
+        .from('users')
+        .select('id,email,full_name,created_at,site_admin')
+        .eq('site_admin', true)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const superAdminData = data.map(item => ({
-        ...item.users,
-        company: item.companies,
-        role: item.roles
-      }));
-
-      setSuperAdmins(superAdminData);
+      setSiteAdmins(data || []);
     } catch (err) {
-      console.error('Error loading super admins:', err);
-      setError('Failed to load super admins');
+      console.error('Error loading site admins:', err);
+      setError('Failed to load site admins');
     } finally {
       setLoading(false);
     }
@@ -224,20 +202,33 @@ const SuperAdminManagement = () => {
     }
   };
 
-  const handleRemoveSuperAdmin = async (userId, companyId) => {
-    if (window.confirm('Are you sure you want to remove super admin privileges from this user?')) {
+  const handleRemoveSiteAdmin = async (userId) => {
+    if (window.confirm('Are you sure you want to remove site admin privileges from this user?')) {
       try {
-        await removeUserRoleFromCompany(userId, companyId);
-        loadSuperAdmins();
+        // Update users table to set site_admin = false
+        const { error } = await supabase
+          .from('users')
+          .update({ site_admin: false })
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        toast({
+          title: "Site Admin Removed",
+          description: "User's site admin privileges have been removed.",
+          variant: "default"
+        });
+
+        await loadSiteAdmins();
         setError(null);
       } catch (err) {
-        setError('Failed to remove super admin privileges');
+        setError('Failed to remove site admin privileges');
         console.error(err);
       }
     }
   };
 
-  const handleCreateSuperAdmin = async (e) => {
+  const handleCreateSiteAdmin = async (e) => {
     e.preventDefault();
     if (!newAdminEmail) {
       setError('Email is required');
@@ -245,46 +236,42 @@ const SuperAdminManagement = () => {
     }
 
     try {
-      const superAdminRoleId = getSuperAdminRoleId();
-      if (!superAdminRoleId) {
-        setError('Super admin role not found');
-        return;
-      }
+      const result = await createSiteAdmin(newAdminEmail, newAdminName);
 
-      // For now, we'll use the first company. In a real app, you might want to select a company
-      const { data: companies } = await supabase.from('companies').select('id').limit(1);
-      if (!companies || companies.length === 0) {
-        setError('No companies found');
-        return;
-      }
+      // Show success message
+      toast({
+        title: result.promoted ? "User Promoted!" : "Site Admin Created!",
+        description: result.promoted
+          ? `${newAdminEmail} has been promoted to site admin.`
+          : `${newAdminEmail} has been created as a site admin and will receive an invitation email.`,
+        variant: "default"
+      });
 
-      await createUserByEmail(newAdminEmail, companies[0].id, newAdminName, superAdminRoleId);
-      loadSuperAdmins();
-      setShowAddSuperAdmin(false);
+      // Reload the site admins list
+      await loadSiteAdmins();
+
+      // Reset form
+      setShowAddSiteAdmin(false);
       setNewAdminEmail('');
       setNewAdminName('');
       setError(null);
     } catch (err) {
-      if (err.message === 'User is already linked to this company') {
-        setError('This user is already linked to a company');
-      } else {
-        setError(`Failed to create super admin: ${err.message}`);
-      }
+      setError(`Failed to create site admin: ${err.message}`);
       console.error(err);
     }
   };
 
-  const getNonSuperAdminUsers = () => {
-    const superAdminUserIds = superAdmins.map(sa => sa.id);
-    return allUsers.filter(user => !superAdminUserIds.includes(user.id));
+  const getNonSiteAdminUsers = () => {
+    const siteAdminUserIds = siteAdmins.map(sa => sa.id);
+    return allUsers.filter(user => !siteAdminUserIds.includes(user.id));
   };
 
   const getFilteredUsers = () => {
-    const nonSuperAdmins = getNonSuperAdminUsers();
-    if (!userSearchTerm) return nonSuperAdmins;
-    
+    const nonSiteAdmins = getNonSiteAdminUsers();
+    if (!userSearchTerm) return nonSiteAdmins;
+
     const searchLower = userSearchTerm.toLowerCase();
-    return nonSuperAdmins.filter(user => 
+    return nonSiteAdmins.filter(user => 
       user.email.toLowerCase().includes(searchLower) ||
       (user.full_name && user.full_name.toLowerCase().includes(searchLower))
     );
@@ -303,27 +290,31 @@ const SuperAdminManagement = () => {
     }
 
     try {
-      const superAdminRoleId = getSuperAdminRoleId();
-      if (!superAdminRoleId) {
-        setError('Super admin role not found');
+      // Find the selected user's email
+      const selectedUser = allUsers.find(u => u.id === selectedUserId);
+      if (!selectedUser) {
+        setError('Selected user not found');
         return;
       }
 
-      // Get the first company for now
-      const { data: companies } = await supabase.from('companies').select('id').limit(1);
-      if (!companies || companies.length === 0) {
-        setError('No companies found');
-        return;
-      }
+      // Use the createSiteAdmin API - it will handle promoting existing users
+      const result = await createSiteAdmin(selectedUser.email, selectedUser.full_name || '');
 
-      await updateUserRoleInCompany(selectedUserId, companies[0].id, superAdminRoleId);
-      loadSuperAdmins();
-      setShowAddSuperAdmin(false);
+      // Show success message
+      toast({
+        title: "User Promoted!",
+        description: `${selectedUser.email} has been promoted to site admin.`,
+        variant: "default"
+      });
+
+      // Reload and reset
+      await loadSiteAdmins();
+      setShowAddSiteAdmin(false);
       setSelectedUserId('');
       setUserSearchTerm('');
       setError(null);
     } catch (err) {
-      setError(`Failed to promote user to super admin: ${err.message}`);
+      setError(`Failed to promote user to site admin: ${err.message}`);
       console.error(err);
     }
   };
@@ -332,7 +323,7 @@ const SuperAdminManagement = () => {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h1 className="text-2xl font-bold text-gray-800 mb-6">Super Admin Management</h1>
+          <h1 className="text-2xl font-bold text-gray-800 mb-6">Site Admin Management</h1>
           <div className="flex justify-center items-center h-64">
             <div className="text-lg">Loading...</div>
           </div>
@@ -344,8 +335,8 @@ const SuperAdminManagement = () => {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Super Admin Management</h1>
-        
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">Site Admin Management</h1>
+
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
             {error}
@@ -376,16 +367,16 @@ const SuperAdminManagement = () => {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab('super-admins');
-                  setSearchParams({ tab: 'super-admins' });
+                  setActiveTab('site-admins');
+                  setSearchParams({ tab: 'site-admins' });
                 }}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'super-admins'
+                  activeTab === 'site-admins'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Super Admins
+                Site Admins
               </button>
             </nav>
           </div>
@@ -403,22 +394,22 @@ const SuperAdminManagement = () => {
           />
         )}
 
-        {activeTab === 'super-admins' && (
+        {activeTab === 'site-admins' && (
           <div>
 
-        {/* Add Super Admin Section */}
+        {/* Add Site Admin Section */}
         <div className="mb-6">
           <button
-            onClick={() => setShowAddSuperAdmin(!showAddSuperAdmin)}
+            onClick={() => setShowAddSiteAdmin(!showAddSiteAdmin)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
           >
-            {showAddSuperAdmin ? 'Cancel' : 'Add Super Admin'}
+            {showAddSiteAdmin ? 'Cancel' : 'Add Site Admin'}
           </button>
 
-          {showAddSuperAdmin && (
+          {showAddSiteAdmin && (
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
               <div className="mb-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Add Super Admin</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Add Site Admin</h3>
                 <p className="text-sm text-gray-600 mb-4">Choose an existing user or create a new one:</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -466,14 +457,14 @@ const SuperAdminManagement = () => {
                       disabled={!selectedUserId}
                       className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm"
                     >
-                      Promote to Super Admin
+                      Promote to Site Admin
                     </button>
                   </div>
 
                   {/* Create New User */}
                   <div className="border border-gray-300 rounded-lg p-4">
-                    <h4 className="text-md font-medium text-gray-800 mb-3">Create New User</h4>
-                    <form onSubmit={handleCreateSuperAdmin}>
+                    <h4 className="text-md font-medium text-gray-800 mb-3">Create New Site Admin</h4>
+                    <form onSubmit={handleCreateSiteAdmin}>
                       <div className="space-y-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -504,7 +495,7 @@ const SuperAdminManagement = () => {
                         type="submit"
                         className="mt-3 w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                       >
-                        Create Super Admin
+                        Create Site Admin
                       </button>
                     </form>
                   </div>
@@ -514,7 +505,7 @@ const SuperAdminManagement = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowAddSuperAdmin(false);
+                      setShowAddSiteAdmin(false);
                       setNewAdminEmail('');
                       setNewAdminName('');
                       setSelectedUserId('');
@@ -532,7 +523,7 @@ const SuperAdminManagement = () => {
           )}
         </div>
 
-        {/* Super Admins List */}
+        {/* Site Admins List */}
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -541,10 +532,7 @@ const SuperAdminManagement = () => {
                   User
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Company
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
+                  Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Created
@@ -555,33 +543,25 @@ const SuperAdminManagement = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {superAdmins.map((admin) => (
-                <tr key={`${admin.id}-${admin.company?.id}`}>
+              {siteAdmins.map((admin) => (
+                <tr key={admin.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {admin.full_name || 'No name'}
-                      </div>
-                      <div className="text-sm text-gray-500">{admin.email}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {admin.full_name || 'No name'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {admin.company?.name || 'No company'}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                      {admin.role?.name || 'No role'}
-                    </span>
+                    <div className="text-sm text-gray-500">{admin.email}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(admin.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
-                      onClick={() => handleRemoveSuperAdmin(admin.id, admin.company?.id)}
+                      onClick={() => handleRemoveSiteAdmin(admin.id)}
                       className="text-red-600 hover:text-red-900"
                     >
-                      Remove Super Admin
+                      Remove Site Admin
                     </button>
                   </td>
                 </tr>
@@ -589,9 +569,9 @@ const SuperAdminManagement = () => {
             </tbody>
           </table>
           
-          {superAdmins.length === 0 && (
+          {siteAdmins.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              No super admins found.
+              No site admins found.
             </div>
           )}
         </div>
