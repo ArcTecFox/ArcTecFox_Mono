@@ -246,6 +246,11 @@ class PDFExportRequest(BaseModel):
     filename: Optional[str] = None
     export_type: str  # "maintenance_task", "pm_plans", "assets", "detailed_pm_plans"
 
+# Root health check for Render.com
+@app.get("/")
+async def root():
+    return {"status": "healthy", "service": "ArcTecFox PM Planning API", "version": "1.0.0"}
+
 # Health check route
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
