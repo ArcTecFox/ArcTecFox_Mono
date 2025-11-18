@@ -33,7 +33,7 @@ function Login() {
   const handleEmailChange = (e) => {
     const emailValue = e.target.value;
     setEmail(emailValue);
-    
+
     if (shouldUseGoogleAuth(emailValue)) {
       setError("Gmail addresses should use Google Sign-In. Please use the Google button below.");
     } else {
@@ -45,7 +45,7 @@ function Login() {
   const handlePasswordChange = (e) => {
     const passwordValue = e.target.value;
     setPassword(passwordValue);
-    
+
     if (isSignUp && passwordValue) {
       const validation = validatePassword(passwordValue);
       setPasswordErrors(validation.errors);
@@ -275,24 +275,24 @@ function Login() {
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
-            <input 
-              type="email" 
-              required 
+            <input
+              type="email"
+              required
               className="block w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Work email (non-Gmail)" 
-              value={email} 
-              onChange={handleEmailChange} 
+              placeholder="Work email (non-Gmail)"
+              value={email}
+              onChange={handleEmailChange}
             />
           </div>
-          
+
           <div>
-            <input 
-              type="password" 
-              required 
+            <input
+              type="password"
+              required
               className="block w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Password" 
-              value={password} 
-              onChange={handlePasswordChange} 
+              placeholder="Password"
+              value={password}
+              onChange={handlePasswordChange}
             />
             {isSignUp && passwordErrors.length > 0 && (
               <div className="mt-2 text-sm text-red-600">
@@ -304,24 +304,31 @@ function Login() {
                 </ul>
               </div>
             )}
+            {!isSignUp && (
+              <div className="mt-2 text-right">
+                <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800">
+                  Forgot Password?
+                </Link>
+              </div>
+            )}
           </div>
-          
+
           {isSignUp && (
             <div>
-              <input 
-                type="password" 
-                required 
+              <input
+                type="password"
+                required
                 className="block w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Confirm Password" 
-                value={confirmPassword} 
-                onChange={(e) => setConfirmPassword(e.target.value)} 
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
               />
             </div>
           )}
-          
-          <button 
-            type="submit" 
-            disabled={loading || (isSignUp && passwordErrors.length > 0) || shouldUseGoogleAuth(email)} 
+
+          <button
+            type="submit"
+            disabled={loading || (isSignUp && passwordErrors.length > 0) || shouldUseGoogleAuth(email)}
             className="w-full p-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
@@ -340,7 +347,7 @@ function Login() {
               {isSignUp ? "Sign In" : "Sign Up"}
             </button>
           </p>
-          
+
           {!isSignUp && (
             <p className="text-sm text-gray-600">
               Need access? <Link to="/" className="text-blue-600 hover:text-blue-800">Request Access</Link>

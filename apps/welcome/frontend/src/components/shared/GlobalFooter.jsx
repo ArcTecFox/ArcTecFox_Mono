@@ -35,7 +35,7 @@ export default function GlobalFooter() {
               Privacy Policy
             </Link>
             <a
-              href="mailto:support@arctecfox.ai"
+              href="mailto:support@arctecfox.co"
               className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               Contact

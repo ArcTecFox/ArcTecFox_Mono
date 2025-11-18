@@ -14,7 +14,7 @@ const getBackendUrl = () => {
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
-  
+
   // Check if we're in GitHub Codespaces
   const hostname = window.location.hostname;
   if (hostname.includes('.app.github.dev')) {
@@ -22,7 +22,7 @@ const getBackendUrl = () => {
     const codespacePrefix = hostname.split('-3000.')[0];
     return `https://${codespacePrefix}-8000.app.github.dev`;
   }
-  
+
   // Default for local development or production
   return import.meta.env.DEV ? 'http://localhost:8000' : 'https://arctecfox-mono.onrender.com';
 };
@@ -78,30 +78,40 @@ export async function updatePassword(newPassword) {
   return data;
 }
 
+// Reset password for email (forgot password flow)
+export async function resetPasswordForEmail(email) {
+  const redirectTo = `${window.location.origin}/login?type=recovery`;
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo
+  });
+  if (error) throw error;
+  return data;
+}
+
 // ✅ UPDATED: Fixed Google OAuth sign-in function
 export async function signInWithGoogle() {
   try {
     console.log('🔍 signInWithGoogle called');
     console.log('🔍 Current location:', window.location.href);
-    
+
     // Force redirect to current environment
     const currentOrigin = window.location.origin;
     console.log('🔍 Redirect will go to:', currentOrigin);
-    
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: currentOrigin // This should override the Site URL
       }
     });
-    
+
     console.log('🔍 OAuth response data:', data);
-    
+
     if (error) {
       console.error('❌ OAuth error:', error);
       throw error;
     }
-    
+
     return data;
   } catch (error) {
     console.error('❌ signInWithGoogle error:', error);
@@ -138,7 +148,7 @@ export async function getCurrentUser() {
     if (session?.user) {
       return session.user;
     }
-    
+
     // Then check regular auth
     const { data, error } = await supabase.auth.getUser();
     if (error) throw error;
@@ -167,7 +177,7 @@ export const shouldUseGoogleAuth = (email) => {
 export const createAccessRequest = async (requestData) => {
   try {
     console.log('📝 Creating access request:', requestData);
-    
+
     const response = await fetch(`${BACKEND_URL}/api/request-access`, {
       method: 'POST',
       headers: {
@@ -175,12 +185,12 @@ export const createAccessRequest = async (requestData) => {
       },
       body: JSON.stringify(requestData),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || 'Failed to create access request');
     }
-    
+
     const result = await response.json();
     console.log('✅ Access request created successfully');
     return result;
@@ -196,7 +206,7 @@ export const fetchAccessRequests = async (status = 'pending') => {
     if (sessionError || !session) {
       throw new Error('Authentication required');
     }
-    
+
     const response = await fetch(`${BACKEND_URL}/api/access-requests?status=${status}`, {
       method: 'GET',
       headers: {
@@ -204,12 +214,12 @@ export const fetchAccessRequests = async (status = 'pending') => {
         'Content-Type': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || 'Failed to fetch access requests');
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('❌ Error fetching access requests:', error);
@@ -223,7 +233,7 @@ export const approveAccessRequest = async (approvalData) => {
     if (sessionError || !session) {
       throw new Error('Authentication required');
     }
-    
+
     const response = await fetch(`${BACKEND_URL}/api/approve-access`, {
       method: 'POST',
       headers: {
@@ -232,12 +242,12 @@ export const approveAccessRequest = async (approvalData) => {
       },
       body: JSON.stringify(approvalData),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || 'Failed to approve access request');
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('❌ Error approving access request:', error);
@@ -251,7 +261,7 @@ export const rejectAccessRequest = async (rejectionData) => {
     if (sessionError || !session) {
       throw new Error('Authentication required');
     }
-    
+
     const response = await fetch(`${BACKEND_URL}/api/reject-access`, {
       method: 'POST',
       headers: {
@@ -260,12 +270,12 @@ export const rejectAccessRequest = async (rejectionData) => {
       },
       body: JSON.stringify(rejectionData),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || 'Failed to reject access request');
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('❌ Error rejecting access request:', error);
@@ -279,28 +289,28 @@ export const rejectAccessRequest = async (rejectionData) => {
 export const savePMPlanInput = async (planData) => {
   try {
     console.log('💾 Saving PM plan input to database:', planData);
-    
+
     // Get the current authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) throw new Error('User not authenticated');
     if (!user) throw new Error('No authenticated user found');
-    
+
     console.log('👤 Current user email:', user.email);
-    
+
     // Step 1: Check if user exists in users table
     const { data: existingUser, error: userLookupError } = await supabase
       .from('users')
       .select('id')
       .eq('email', user.email)
       .single();
-    
+
     if (userLookupError && userLookupError.code !== 'PGRST116') {
       // PGRST116 is "not found" error, other errors are actual problems
       throw new Error(`Error looking up user: ${userLookupError.message}`);
     }
-    
+
     let userId;
-    
+
     if (existingUser) {
       // User exists, use their ID
       userId = existingUser.id;
@@ -308,7 +318,7 @@ export const savePMPlanInput = async (planData) => {
     } else {
       // User doesn't exist, create new user record
       console.log('📝 Creating new user record for:', user.email);
-      
+
       const { data: newUser, error: createUserError } = await supabase
         .from('users')
         .insert([{
@@ -319,15 +329,15 @@ export const savePMPlanInput = async (planData) => {
         }])
         .select('id')
         .single();
-      
+
       if (createUserError) {
         throw new Error(`Error creating user: ${createUserError.message}`);
       }
-      
+
       userId = newUser.id;
       console.log('✅ Created new user with ID:', userId);
     }
-    
+
     // Step 2: Insert PM plan with only plan-specific data (no asset duplication)
     const planInsertData = {
       child_asset_id: planData.child_asset_id || null, // Link to child asset (required)
@@ -336,7 +346,7 @@ export const savePMPlanInput = async (planData) => {
       status: 'Current', // Set status as Current for new plans
       version: 1, // Plan version
     };
-    
+
     // Asset data will be retrieved via JOIN with child_assets and parent_assets tables
 
     console.log('🗃️ Saving PM plan with child asset ID:', {
@@ -356,9 +366,9 @@ export const savePMPlanInput = async (planData) => {
       .insert([planInsertData])
       .select()
       .single();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ PM plan input saved successfully with user ID:', userId);
     return data;
   } catch (error) {
@@ -370,15 +380,15 @@ export const savePMPlanInput = async (planData) => {
 // Helper function to parse maintenance interval (e.g., "3 months" -> 3, "annually" -> 12)
 export const parseMaintenanceInterval = (intervalStr) => {
   console.log(`🔍 parseMaintenanceInterval: input="${intervalStr}"`);
-  
+
   if (!intervalStr) {
     console.log(`🔍 No interval provided, returning 0`);
     return 0;
   }
-  
+
   const interval = intervalStr.toLowerCase().trim();
   console.log(`🔍 Cleaned interval: "${interval}"`);
-  
+
   // Check for text-based intervals first
   if (interval.includes('annual') || interval.includes('yearly')) {
     console.log(`🔍 Matched annual/yearly -> 12 months`);
@@ -398,18 +408,18 @@ export const parseMaintenanceInterval = (intervalStr) => {
       console.log(`🔍 Matched monthly -> 1 month`);
       return 1; // Monthly = 1 month
     }
-    
+
     // Extract number from various formats: "# months", "every # months", "3 months", etc.
     let cleaned = interval
       .replace(/every\s+/gi, '') // Remove "every" prefix
       .replace(/months?/gi, '') // Remove "month" or "months"
       .replace(/or.*$/gi, '') // Remove everything after "or" (like "or 5000 miles")
       .trim();
-    
+
     // Extract the first number found
     const numberMatch = cleaned.match(/\d+/);
     const result = numberMatch ? parseInt(numberMatch[0]) : 1;
-    
+
     console.log(`🔍 Extracted number from "${interval}" -> cleaned="${cleaned}" -> match="${numberMatch ? numberMatch[0] : 'none'}" -> ${result} months`);
     return result;
   }
@@ -422,14 +432,14 @@ export const parseMaintenanceInterval = (intervalStr) => {
       return 0.5; // Biweekly ≈ 0.5 months
     }
   }
-  
+
   // Try to parse as a plain number (assuming months)
   const parsed = parseInt(interval);
   if (!isNaN(parsed)) {
     console.log(`🔍 Parsed as number: ${parsed} months`);
     return parsed;
   }
-  
+
   // Default to 0 if unable to parse
   console.warn(`⚠️ Unable to parse maintenance interval: "${intervalStr}", defaulting to 0`);
   return 0;
@@ -450,7 +460,7 @@ export const calculateDueDate = (startDate, intervalMonths) => {
   console.log(`🔍 calculateDueDate: startDate=${startDate}, intervalMonths=${intervalMonths}`);
   const date = new Date(startDate);
   console.log(`🔍 Parsed start date:`, date);
-  
+
   // Handle fractional months (for weekly/biweekly)
   if (intervalMonths < 1) {
     // Special case for weekly (0.25 months = 7 days)
@@ -468,11 +478,11 @@ export const calculateDueDate = (startDate, intervalMonths) => {
     console.log(`🔍 Adding ${Math.floor(intervalMonths)} months`);
     date.setMonth(date.getMonth() + Math.floor(intervalMonths));
   }
-  
+
   const beforeWeekendAdjust = date.toISOString().split('T')[0];
   const finalDate = adjustForWeekend(date).toISOString().split('T')[0];
   console.log(`🔍 Before weekend adjust: ${beforeWeekendAdjust}, After: ${finalDate}`);
-  
+
   return finalDate;
 };
 
@@ -480,51 +490,51 @@ export const calculateDueDate = (startDate, intervalMonths) => {
 export const recalculateTaskSignoffDates = async (childAssetId, newStartDate) => {
   try {
     console.log('📅 Recalculating task_signoff dates for child asset:', childAssetId);
-    
+
     // Get all PM plans for this child asset
     const { data: plans, error: plansError } = await supabase
       .from('pm_plans')
       .select('id')
       .eq('child_asset_id', childAssetId)
       .eq('status', 'Current');
-    
+
     if (plansError || !plans || plans.length === 0) {
       console.log('No current PM plans found for child asset');
       return;
     }
-    
+
     // Get all tasks for these plans
     const planIds = plans.map(p => p.id);
     const { data: tasks, error: tasksError } = await supabase
       .from('pm_tasks')
       .select('id, maintenance_interval')
       .in('pm_plan_id', planIds);
-    
+
     if (tasksError || !tasks || tasks.length === 0) {
       console.log('No tasks found for PM plans');
       return;
     }
-    
+
     // Update each task_signoff record with new due date
     for (const task of tasks) {
       const intervalMonths = parseMaintenanceInterval(task.maintenance_interval);
-      const newDueDate = intervalMonths > 0 
+      const newDueDate = intervalMonths > 0
         ? calculateDueDate(newStartDate, intervalMonths)
         : calculateDueDate(newStartDate, 1);
-      
+
       const { error: updateError } = await supabase
         .from('task_signoff')
-        .update({ 
+        .update({
           due_date: newDueDate
         })
         .eq('task_id', task.id)
         .is('comp_date', null);
-      
+
       if (updateError) {
         console.error('Error updating task_signoff due date:', updateError);
       }
     }
-    
+
     console.log('✅ Recalculated due dates for', tasks.length, 'tasks');
   } catch (error) {
     console.error('Error recalculating task_signoff dates:', error);
@@ -536,20 +546,20 @@ const createInitialTaskSignoffs = async (pmPlanId, tasks) => {
   try {
     console.log('📝 Creating initial task_signoff records for PM plan:', pmPlanId);
     console.log('📝 Tasks to process:', tasks.length);
-    
+
     // Use today's date as the start date for all new PM plans
     const planStartDate = new Date().toISOString().split('T')[0];
     console.log('📅 Using start date:', planStartDate);
-    
+
     // Create signoff records for each task
     const signoffRecords = tasks.map(task => {
       const intervalMonths = parseMaintenanceInterval(task.maintenance_interval);
-      const dueDate = intervalMonths > 0 
+      const dueDate = intervalMonths > 0
         ? calculateDueDate(planStartDate, intervalMonths)
         : calculateDueDate(planStartDate, 1); // Default to 1 month if no interval
-      
+
       console.log(`📋 Task: ${task.task_name}, Interval: ${task.maintenance_interval}, Months: ${intervalMonths}, Due: ${dueDate}`);
-      
+
       return {
         task_id: task.id,
         due_date: dueDate,
@@ -561,15 +571,15 @@ const createInitialTaskSignoffs = async (pmPlanId, tasks) => {
         status: 'pending' // Set initial status as pending
       };
     });
-    
+
     if (signoffRecords.length > 0) {
       console.log('📝 Attempting to insert signoff records:', signoffRecords);
-      
+
       const { data, error } = await supabase
         .from('task_signoff')
         .insert(signoffRecords)
         .select();
-      
+
       if (error) {
         console.error('❌ Error creating task_signoff records:', error);
         console.error('❌ Error details:', JSON.stringify(error, null, 2));
@@ -586,7 +596,7 @@ const createInitialTaskSignoffs = async (pmPlanId, tasks) => {
 export const savePMPlanResults = async (pmPlanId, aiGeneratedPlan, criticality = 'Medium') => {
   try {
     console.log('💾 Saving PM plan results to database:', { pmPlanId, taskCount: aiGeneratedPlan.length, criticality });
-    
+
     // Debug: Check if consumables are present in AI generated plan
     console.log('🔍 FRONTEND: Checking consumables in AI plan:');
     aiGeneratedPlan.forEach((task, index) => {
@@ -625,17 +635,17 @@ export const savePMPlanResults = async (pmPlanId, aiGeneratedPlan, criticality =
       .from('pm_tasks')
       .insert(resultsToInsert)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ PM plan results saved successfully:', data.length, 'tasks saved');
-    
+
     // Debug: Check what was actually saved to database
     console.log('🔍 FRONTEND: First saved task consumables:', data[0]?.consumables);
-    
+
     // Create task_signoff records for each task
     await createInitialTaskSignoffs(pmPlanId, data);
-    
+
     return data;
   } catch (error) {
     console.error("❌ Error saving PM plan results:", error);
@@ -752,14 +762,14 @@ export const formatMaintenanceInterval = (weekValue) => {
 export const captureLeadWithPlan = async ({ planData, email, company, fullName, requestAccess }) => {
   try {
     console.log('🚀 Starting lead capture with PM plan generation');
-    
+
     // Call backend endpoint that handles everything with service key
     const response = await fetch(`${BACKEND_URL}/api/lead-capture`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         planData,
         email,
         company,
@@ -774,14 +784,14 @@ export const captureLeadWithPlan = async ({ planData, email, company, fullName, 
     }
 
     const result = await response.json();
-    
+
     if (!result.success) {
       throw new Error('Lead capture failed');
     }
 
     console.log('✅ Lead captured and PM plan generated successfully');
     return result;
-    
+
   } catch (error) {
     console.error("❌ Error in lead capture:", error);
     throw error;
@@ -798,14 +808,14 @@ export const generatePMPlan = async (planData) => {
 
     // 2. Generate AI plan (secure backend call)
     const aiGeneratedPlan = await generateAIPlan(planData);
-    
+
     // 4. Save AI results with criticality (direct to Supabase)
     const criticality = planData.criticality || 'Medium'; // Get criticality from planData
     await savePMPlanResults(savedPlanInput.id, aiGeneratedPlan, criticality);
-    
+
     console.log('✅ Complete PM plan process finished');
     return aiGeneratedPlan;
-    
+
   } catch (error) {
     console.error("❌ Error in PM plan generation process:", error);
     throw error;
@@ -835,7 +845,7 @@ export const fetchPMPlans = async () => {
       `)
       .eq('status', 'Current')
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     return data;
   } catch (error) {
@@ -848,15 +858,15 @@ export const fetchPMPlans = async () => {
 export const fetchPMPlansByAsset = async (parentAssetId, childAssetId = null) => {
   try {
     console.log('🔍 Fetching PM plans for child asset:', { parentAssetId, childAssetId });
-    
+
     // Since all plans are for child assets only, we only search when childAssetId is provided
     if (!childAssetId) {
       console.log('❌ No child asset ID provided - returning empty (parent assets have no direct plans)');
       return [];
     }
-    
+
     console.log('🔍 Searching by child_asset_id:', childAssetId);
-    
+
     // First, get the PM plans (simplified query without JOINs)
     const { data: plans, error: plansError } = await supabase
       .from('pm_plans')
@@ -864,7 +874,7 @@ export const fetchPMPlansByAsset = async (parentAssetId, childAssetId = null) =>
       .eq('child_asset_id', childAssetId)
       .eq('status', 'Current')
       .order('created_at', { ascending: false });
-    
+
     if (plansError) {
       console.error('❌ Error fetching pm_plans:', plansError);
       throw plansError;
@@ -919,7 +929,7 @@ export const fetchMetrics = async () => {
 export const fetchUserRoles = async (userId) => {
   try {
     console.log('🔍 Fetching user roles for user:', userId);
-    
+
     const { data, error } = await supabase
       .from('user_roles')
       .select(`
@@ -930,9 +940,9 @@ export const fetchUserRoles = async (userId) => {
         )
       `)
       .eq('user_id', userId);
-    
+
     if (error) throw error;
-    
+
     // Extract role names from the response
     const roleNames = data.map(item => item.roles.name);
     console.log('✅ User roles fetched:', roleNames);
@@ -949,14 +959,14 @@ export const fetchUserRoles = async (userId) => {
 export const fetchAllRoles = async () => {
   try {
     console.log('🔑 Fetching all roles');
-    
+
     const { data, error } = await supabase
       .from('roles')
       .select('id, name')
       .order('name');
-    
+
     if (error) throw error;
-    
+
     console.log('✅ All roles fetched:', data);
     return data;
   } catch (error) {
@@ -969,14 +979,14 @@ export const fetchAllRoles = async () => {
 export const addUserRole = async (userId, roleId) => {
   try {
     console.log('➕ Adding role to user:', { userId, roleId });
-    
+
     const { data, error } = await supabase
       .from('user_roles')
       .insert([{ user_id: userId, role_id: roleId }])
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Role added to user:', data);
     return data;
   } catch (error) {
@@ -989,16 +999,16 @@ export const addUserRole = async (userId, roleId) => {
 export const removeUserRole = async (userId, roleId) => {
   try {
     console.log('➖ Removing role from user:', { userId, roleId });
-    
+
     const { data, error } = await supabase
       .from('user_roles')
       .delete()
       .eq('user_id', userId)
       .eq('role_id', roleId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Role removed from user:', data);
     return data;
   } catch (error) {
@@ -1011,15 +1021,15 @@ export const removeUserRole = async (userId, roleId) => {
 export const updateUser = async (userId, updates) => {
   try {
     console.log('✏️ Updating user:', { userId, updates });
-    
+
     const { data, error } = await supabase
       .from('users')
       .update(updates)
       .eq('id', userId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ User updated:', data);
     return data;
   } catch (error) {
@@ -1032,22 +1042,22 @@ export const updateUser = async (userId, updates) => {
 export const deleteUser = async (userId) => {
   try {
     console.log('🗑️ Deleting user:', userId);
-    
+
     // First delete user roles
     await supabase
       .from('user_roles')
       .delete()
       .eq('user_id', userId);
-    
+
     // Then delete user
     const { data, error } = await supabase
       .from('users')
       .delete()
       .eq('id', userId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ User deleted:', data);
     return data;
   } catch (error) {
@@ -1065,29 +1075,29 @@ export const deleteUser = async (userId) => {
 export const checkAndMigrateUser = async (userId) => {
   try {
     console.log('🔄 Checking if user needs migration:', userId);
-    
+
     // Check if user exists in site_users
     const { data: siteUserData, error: siteUserError } = await supabase
       .from('site_users')
       .select('id')
       .eq('user_id', userId);
-    
+
     if (siteUserError) {
       console.error('Error checking site_users (table might not exist):', siteUserError);
-      
+
       // If site_users table doesn't exist or has permission issues,
       // we'll use the company_users data directly for now
       console.log('🔄 Falling back to company_users for admin checks');
       return await fallbackToCompanyUsers(userId);
     }
-    
+
     if (siteUserData && siteUserData.length > 0) {
       console.log('✅ User already exists in site_users');
       return true;
     }
-    
+
     console.log('🔍 User needs migration - checking company_users...');
-    
+
     // Check if user exists in old company_users table
     const { data: companyUserData, error: companyUserError } = await supabase
       .from('company_users')
@@ -1100,38 +1110,38 @@ export const checkAndMigrateUser = async (userId) => {
         )
       `)
       .eq('user_id', userId);
-    
+
     if (companyUserError) {
       console.error('Error checking company_users:', companyUserError);
       return false;
     }
-    
+
     if (!companyUserData || companyUserData.length === 0) {
       console.log('❌ User not found in company_users either');
       return false;
     }
-    
+
     console.log('🏢 Found user in company_users:', companyUserData);
-    
+
     // For each company, find the first site and migrate user there
     for (const companyUser of companyUserData) {
       const companyId = companyUser.company_id;
-      
+
       // Get first site for this company
       const { data: sites, error: sitesError } = await supabase
         .from('sites')
         .select('id, name')
         .eq('company_id', companyId)
         .limit(1);
-      
+
       if (sitesError) {
         console.error('Error fetching sites:', sitesError);
         continue;
       }
-      
+
       if (!sites || sites.length === 0) {
         console.log(`❌ No sites found for company ${companyId}, creating default site...`);
-        
+
         // Create a default site for this company
         const { data: newSite, error: createSiteError } = await supabase
           .from('sites')
@@ -1142,18 +1152,18 @@ export const checkAndMigrateUser = async (userId) => {
           }])
           .select()
           .single();
-        
+
         if (createSiteError) {
           console.error('Error creating default site:', createSiteError);
           continue;
         }
-        
+
         console.log('✅ Created default site:', newSite);
         sites[0] = newSite;
       }
-      
+
       const siteId = sites[0].id;
-      
+
       // Migrate user to site_users
       const { data: migratedUser, error: migrationError } = await supabase
         .from('site_users')
@@ -1163,15 +1173,15 @@ export const checkAndMigrateUser = async (userId) => {
           role_id: companyUser.role_id
         }])
         .select();
-      
+
       if (migrationError) {
         console.error('Error migrating user to site_users:', migrationError);
         continue;
       }
-      
+
       console.log('✅ Successfully migrated user to site_users:', migratedUser);
     }
-    
+
     return true;
   } catch (error) {
     console.error('❌ Error in migration:', error);
@@ -1185,15 +1195,15 @@ export const checkAndMigrateUser = async (userId) => {
 export const fetchCompanySites = async (companyId) => {
   try {
     console.log('🏢 Fetching sites for company:', companyId);
-    
+
     const { data, error } = await supabase
       .from('sites')
       .select('*')
       .eq('company_id', companyId)
       .order('name');
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Company sites fetched:', data);
     return data;
   } catch (error) {
@@ -1206,7 +1216,7 @@ export const fetchCompanySites = async (companyId) => {
 export const createSite = async (siteData) => {
   try {
     console.log('➕ Creating new site:', siteData);
-    
+
     const { data, error } = await supabase
       .from('sites')
       .insert([{
@@ -1218,9 +1228,9 @@ export const createSite = async (siteData) => {
       }])
       .select()
       .single();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Site created:', data);
     return data;
   } catch (error) {
@@ -1233,16 +1243,16 @@ export const createSite = async (siteData) => {
 export const updateSite = async (siteId, updates) => {
   try {
     console.log('✏️ Updating site:', { siteId, updates });
-    
+
     const { data, error } = await supabase
       .from('sites')
       .update(updates)
       .eq('id', siteId)
       .select()
       .single();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Site updated:', data);
     return data;
   } catch (error) {
@@ -1255,15 +1265,15 @@ export const updateSite = async (siteId, updates) => {
 export const deleteSite = async (siteId) => {
   try {
     console.log('🗑️ Deleting site:', siteId);
-    
+
     const { data, error } = await supabase
       .from('sites')
       .delete()
       .eq('id', siteId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ Site deleted:', data);
     return data;
   } catch (error) {
@@ -1278,13 +1288,13 @@ export const deleteSite = async (siteId) => {
 export const fetchSiteUsers = async (siteId) => {
   try {
     console.log('👥 Fetching users for site:', siteId);
-    
+
     // Step 1: Get basic site_users data first
     const { data: siteUsersData, error: siteUsersError } = await supabase
       .from('site_users')
       .select('id, user_id, role_id, can_edit, created_at')
       .eq('site_id', siteId);
-    
+
     if (siteUsersError) {
       console.error("❌ Site users query error:", {
         message: siteUsersError.message,
@@ -1295,43 +1305,43 @@ export const fetchSiteUsers = async (siteId) => {
       });
       throw siteUsersError;
     }
-    
+
     if (!siteUsersData || siteUsersData.length === 0) {
       console.log('📭 No users found for site:', siteId);
       return [];
     }
-    
+
     console.log('✅ Raw site_users data:', siteUsersData);
-    
+
     // Step 2: Get user details for each user_id
     const userIds = siteUsersData.map(su => su.user_id);
     const { data: usersData, error: usersError } = await supabase
       .from('users')
       .select('id, email, full_name, created_at')
       .in('id', userIds);
-    
+
     if (usersError) {
       console.error("❌ Users query error:", usersError);
       // Don't throw here, continue with partial data
     }
-    
+
     // Step 3: Get role details for each role_id
     const roleIds = siteUsersData.map(su => su.role_id).filter(Boolean);
     const { data: rolesData, error: rolesError } = await supabase
       .from('roles')
       .select('id, name')
       .in('id', roleIds);
-    
+
     if (rolesError) {
       console.error("❌ Roles query error:", rolesError);
       // Don't throw here, continue with partial data
     }
-    
+
     // Step 4: Combine all data
     const usersWithRoles = siteUsersData.map(siteUser => {
       const user = usersData?.find(u => u.id === siteUser.user_id);
       const role = rolesData?.find(r => r.id === siteUser.role_id);
-      
+
       return {
         id: siteUser.id, // site_users id (for editing site-specific properties)
         user_id: siteUser.user_id, // actual user id
@@ -1343,7 +1353,7 @@ export const fetchSiteUsers = async (siteId) => {
         can_edit: siteUser.can_edit || false
       };
     });
-    
+
     console.log('✅ Site users with details:', usersWithRoles);
     return usersWithRoles;
   } catch (error) {
@@ -1356,13 +1366,13 @@ export const fetchSiteUsers = async (siteId) => {
 export const fetchAllSitesWithCompanies = async () => {
   try {
     console.log('🌍 Fetching all sites with company info');
-    
+
     // FIXED: Use separate queries to avoid nested RLS issues
     const { data: sitesData, error: sitesError } = await supabase
       .from('sites')
       .select('id, name, location, company_id')
       .order('name');
-    
+
     if (sitesError) throw sitesError;
 
     if (!sitesData || sitesData.length === 0) {
@@ -1373,13 +1383,13 @@ export const fetchAllSitesWithCompanies = async () => {
     // Get company details separately
     const companyIds = [...new Set(sitesData.map(site => site.company_id).filter(Boolean))];
     let companies = [];
-    
+
     if (companyIds.length > 0) {
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('id, name')
         .in('id', companyIds);
-      
+
       if (companyError) {
         console.warn('Could not fetch companies:', companyError);
         companies = [];
@@ -1406,23 +1416,23 @@ export const fetchAllSitesWithCompanies = async () => {
 export const addUserToSite = async (userId, siteId, roleId = null) => {
   try {
     console.log('➕ Adding user to site:', { userId, siteId, roleId });
-    
+
     const insertData = {
       user_id: userId,
       site_id: siteId
     };
-    
+
     if (roleId) {
       insertData.role_id = roleId;
     }
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .insert([insertData])
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ User added to site:', data);
     return data;
   } catch (error) {
@@ -1435,16 +1445,16 @@ export const addUserToSite = async (userId, siteId, roleId = null) => {
 export const removeUserFromSite = async (userId, siteId) => {
   try {
     console.log('🏢 Removing user from site:', { userId, siteId });
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .delete()
       .eq('user_id', userId)
       .eq('site_id', siteId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ User removed from site:', data);
     return data;
   } catch (error) {
@@ -1457,16 +1467,16 @@ export const removeUserFromSite = async (userId, siteId) => {
 export const updateUserRoleInSite = async (userId, siteId, roleId) => {
   try {
     console.log('🔄 Updating user role in site:', { userId, siteId, roleId });
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .update({ role_id: roleId })
       .eq('user_id', userId)
       .eq('site_id', siteId)
       .select();
-    
+
     if (error) throw error;
-    
+
     console.log('✅ User role updated in site:', data);
     return data;
   } catch (error) {
@@ -1479,7 +1489,7 @@ export const updateUserRoleInSite = async (userId, siteId, roleId) => {
 export const isUserSiteAdmin = async (userId) => {
   try {
     console.log('🔍 Checking site admin status for user:', userId);
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .select(`
@@ -1512,7 +1522,7 @@ export const isUserSiteAdmin = async (userId) => {
 
     console.log('✅ Is user admin?', isAdmin);
     return isAdmin;
-    
+
   } catch (error) {
     console.error("❌ Error checking site admin status:", error);
     return false;
@@ -1523,7 +1533,7 @@ export const isUserSiteAdmin = async (userId) => {
 export const getUserAdminSites = async (userId) => {
   try {
     console.log('🔍 Fetching admin sites for user:', userId);
-    
+
     // FIXED: Use simpler query without complex nesting
     const { data, error } = await supabase
       .from('site_users')
@@ -1586,7 +1596,7 @@ export const getUserAdminSites = async (userId) => {
         const role = roles.find(r => r.id === siteUser.role_id);
         const site = sites.find(s => s.id === siteUser.site_id);
         const company = site ? companies.find(c => c.id === site.company_id) : null;
-        
+
         return {
           ...siteUser,
           roles: role,
@@ -1613,7 +1623,7 @@ export const getUserAdminSites = async (userId) => {
 export const fetchUserSites = async (userId) => {
   try {
     console.log('🏢 Fetching sites for user:', userId);
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .select(`
@@ -1629,15 +1639,15 @@ export const fetchUserSites = async (userId) => {
         )
       `)
       .eq('user_id', userId);
-    
+
     if (error) throw error;
-    
+
     // Extract sites from the response
     const sites = data.map(item => ({
       ...item.sites,
       company: item.sites.companies
     })).filter(Boolean);
-    
+
     console.log('✅ User sites fetched:', sites);
     return sites;
   } catch (error) {
@@ -1696,7 +1706,7 @@ export const sendInvitationSupabase = async (email, siteId, fullName = '', roleI
 export const sendInvitation = async (email, siteId, fullName = '', roleId = null) => {
   try {
     console.log('📧 Sending invitation via backend:', { email, siteId, fullName, roleId });
-    
+
     // Get auth token for backend call
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
@@ -1720,12 +1730,12 @@ export const sendInvitation = async (email, siteId, fullName = '', roleId = null
         site_id: siteId
       })
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.detail || 'Failed to send invitation');
     }
-    
+
     const result = await response.json();
     console.log('✅ Invitation sent successfully via backend');
     return result;
@@ -1739,37 +1749,37 @@ export const sendInvitation = async (email, siteId, fullName = '', roleId = null
 export const acceptInvitation = async (token) => {
   try {
     console.log('🎫 Accepting invitation with token:', token);
-    
+
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Must be logged in to accept invitation');
-    
+
     // Get invitation details
     const { data: invitation, error: inviteError } = await supabase
       .from('invitations')
       .select('*, sites(name, companies(name))')
       .eq('token', token)
       .single();
-    
+
     if (inviteError || !invitation) {
       throw new Error('Invalid or expired invitation');
     }
-    
+
     // Check if invitation is expired
     if (new Date(invitation.expires_at) < new Date()) {
       throw new Error('This invitation has expired');
     }
-    
+
     // Check if already accepted
     if (invitation.accepted_at) {
       throw new Error('This invitation has already been accepted');
     }
-    
+
     // Check if email matches
     if (invitation.email !== user.email) {
       throw new Error('This invitation was sent to a different email address');
     }
-    
+
     // Create site_users entry
     const { error: linkError } = await supabase
       .from('site_users')
@@ -1778,19 +1788,19 @@ export const acceptInvitation = async (token) => {
         site_id: invitation.site_id,
         role_id: invitation.role_id
       }]);
-    
+
     if (linkError && linkError.code !== '23505') { // Ignore if already exists
       throw linkError;
     }
-    
+
     // Mark invitation as accepted
     const { error: updateError } = await supabase
       .from('invitations')
       .update({ accepted_at: new Date().toISOString() })
       .eq('token', token);
-    
+
     if (updateError) throw updateError;
-    
+
     console.log('✅ Invitation accepted successfully');
     return invitation;
   } catch (error) {
@@ -1844,7 +1854,7 @@ export const addExistingUserToSite = async (email, siteId, roleId = null, canEdi
 export const searchCompanyUsers = async (siteId, searchTerm = '') => {
   try {
     console.log('🔍 Searching company users for site:', siteId, 'term:', searchTerm);
-    
+
     // Step 1: Get site and company info separately
     const { data: siteData, error: siteError } = await supabase
       .from('sites')
@@ -1861,7 +1871,7 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
       });
       throw siteError;
     }
-    
+
     if (!siteData) throw new Error('Site not found');
 
     const companyId = siteData.company_id;
@@ -1909,7 +1919,7 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
         .map(item => item.user_id)
         .filter(userId => !existingUserIds.has(userId))
     )];
-    
+
     console.log('✅ Found company user IDs:', companyUserIds);
 
     if (companyUserIds.length === 0) {
@@ -1935,7 +1945,7 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
     // Step 6: Apply search filter if provided
     if (searchTerm && searchTerm.length >= 2) {
       const term = searchTerm.toLowerCase();
-      filteredUsers = filteredUsers.filter(user => 
+      filteredUsers = filteredUsers.filter(user =>
         user.email.toLowerCase().includes(term) ||
         (user.full_name && user.full_name.toLowerCase().includes(term))
       );
@@ -1968,7 +1978,7 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
 export const fetchUserSitesForPlanning = async (userId) => {
   try {
     console.log('🏢 Fetching user sites for planning:', userId);
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .select(`
@@ -1983,9 +1993,9 @@ export const fetchUserSitesForPlanning = async (userId) => {
         )
       `)
       .eq('user_id', userId);
-    
+
     if (error) throw error;
-    
+
     // Transform data to include company info
     const sites = data.map(item => ({
       id: item.sites.id,
@@ -1994,7 +2004,7 @@ export const fetchUserSitesForPlanning = async (userId) => {
       company: item.sites.companies,
       displayName: `${item.sites.companies.name} - ${item.sites.name}`
     })).filter(Boolean);
-    
+
     console.log('✅ User sites for planning fetched:', sites);
     return sites;
   } catch (error) {
@@ -2007,19 +2017,19 @@ export const fetchUserSitesForPlanning = async (userId) => {
 export const checkSitePlanLimit = async (siteId, newPlansCount = 1) => {
   try {
     console.log('🔍 Checking plan limit for site:', siteId, 'new plans:', newPlansCount);
-    
+
     // Get site's plan_limit
     const { data: siteData, error: siteError } = await supabase
       .from('sites')
       .select('plan_limit, name')
       .eq('id', siteId)
       .single();
-    
+
     if (siteError) throw siteError;
-    
+
     // If plan_limit is null, treat as 0 (no plans allowed)
     const planLimit = siteData.plan_limit || 0;
-    
+
     // Count existing Current plans for this site (don't count Replaced plans)
     // Need to join with child_assets and parent_assets to get site_id
     const { data: plansData, error: plansError } = await supabase
@@ -2033,12 +2043,12 @@ export const checkSitePlanLimit = async (siteId, newPlansCount = 1) => {
       `)
       .eq('status', 'Current')
       .or(`child_assets.parent_assets.site_id.eq.${siteId},parent_assets.site_id.eq.${siteId}`);
-    
+
     if (plansError) throw plansError;
-    
+
     const currentPlanCount = plansData?.length || 0;
     const totalAfterNew = currentPlanCount + newPlansCount;
-    
+
     const result = {
       siteName: siteData.name,
       planLimit: planLimit,
@@ -2048,7 +2058,7 @@ export const checkSitePlanLimit = async (siteId, newPlansCount = 1) => {
       canCreate: totalAfterNew <= planLimit,
       remainingPlans: Math.max(0, planLimit - currentPlanCount)
     };
-    
+
     console.log('✅ Plan limit check result:', result);
     return result;
   } catch (error) {
@@ -2061,7 +2071,7 @@ export const checkSitePlanLimit = async (siteId, newPlansCount = 1) => {
 export const isUserSuperAdmin = async (userId) => {
   try {
     console.log('🔍 Checking super admin status for user:', userId);
-    
+
     const { data, error } = await supabase
       .from('site_users')
       .select(`
@@ -2070,9 +2080,9 @@ export const isUserSuperAdmin = async (userId) => {
         )
       `)
       .eq('user_id', userId);
-    
+
     if (error) throw error;
-    
+
     const isSuperAdmin = data.some(item => item.roles?.name === 'super_admin');
     console.log('✅ Is super admin?', isSuperAdmin);
     return isSuperAdmin;
@@ -2099,7 +2109,7 @@ export const isUserAdmin = async (userId) => {
   return await isUserSiteAdmin(userId);
 };
 
-// DEPRECATED: Use getUserAdminSites instead  
+// DEPRECATED: Use getUserAdminSites instead
 export const getUserAdminCompanies = async (userId) => {
   return await getUserAdminSites(userId);
 };
@@ -2212,7 +2222,7 @@ export const generateParentPlan = async (parentAssetData) => {
 
     const result = await response.json();
     console.log('🤖 Parent plan generated successfully:', result);
-    
+
     return result.plan;
   } catch (error) {
     console.error('🤖 Error generating parent plan:', error);
@@ -2262,9 +2272,9 @@ export const extractAssetDetails = async (manualContent) => {
 export const createParentPMPlan = async (parentAssetId, siteId) => {
   try {
     console.log('📋 Creating PM plan for parent asset:', parentAssetId);
-    
+
     const today = new Date().toISOString().split('T')[0]; // Format as YYYY-MM-DD
-    
+
     const { data, error } = await supabase
       .from('pm_plans')
       .insert([{
@@ -2277,7 +2287,7 @@ export const createParentPMPlan = async (parentAssetId, siteId) => {
       }])
       .select()
       .single();
-    
+
     if (error) throw error;
     console.log('📋 PM plan created:', data);
     return data;
@@ -2314,15 +2324,15 @@ export const createPMTasks = async (pmPlanId, tasks) => {
       criticality: task.criticality_rating || 'Medium',
       created_at: new Date().toISOString()
     }));
-    
+
     const { data, error } = await supabase
       .from('pm_tasks')
       .insert(tasksToInsert)
       .select();
-    
+
     if (error) throw error;
     console.log('📝 PM tasks created:', data);
-    
+
     // Create task_signoff records for each task
     try {
       await createInitialTaskSignoffs(pmPlanId, data);
@@ -2330,7 +2340,7 @@ export const createPMTasks = async (pmPlanId, tasks) => {
       console.error('⚠️ Failed to create task_signoff records, but PM tasks were created:', signoffError);
       // Don't throw - let the parent workflow continue
     }
-    
+
     return data;
   } catch (error) {
     console.error('📝 Error creating PM tasks:', error);
@@ -2342,7 +2352,7 @@ export const createPMTasks = async (pmPlanId, tasks) => {
 export const updateParentAssetSpares = async (parentAssetId, criticalSpares) => {
   try {
     console.log('🔧 Updating parent asset with critical spares:', parentAssetId);
-    
+
     const { data, error } = await supabase
       .from('parent_assets')
       .update({
@@ -2351,7 +2361,7 @@ export const updateParentAssetSpares = async (parentAssetId, criticalSpares) => 
       .eq('id', parentAssetId)
       .select()
       .single();
-    
+
     if (error) throw error;
     console.log('🔧 Parent asset updated with spares:', data);
     return data;
@@ -2365,7 +2375,7 @@ export const updateParentAssetSpares = async (parentAssetId, criticalSpares) => 
 export const fetchParentPMTasks = async (parentAssetId, siteId) => {
   try {
     console.log('📋 Fetching parent PM tasks for asset:', parentAssetId, 'site:', siteId);
-    
+
     // First get the parent PM plan using parent_asset_id
     const { data: planData, error: planError } = await supabase
       .from('pm_plans')
@@ -2374,31 +2384,31 @@ export const fetchParentPMTasks = async (parentAssetId, siteId) => {
       .eq('status', 'Current')
       .order('created_at', { ascending: false })
       .limit(1);
-    
+
     if (planError) {
       console.error('📋 Error fetching parent PM plan:', planError);
       throw planError;
     }
-    
+
     if (!planData || planData.length === 0) {
       console.log('📋 No parent PM plan found');
       return [];
     }
-    
+
     const planId = planData[0].id;
     console.log('📋 Found parent PM plan:', planId);
-    
+
     // Then get the PM tasks for this plan - using single line select (no spaces)
     const { data: tasksData, error: tasksError } = await supabase
       .from('pm_tasks')
       .select('id,task_name,maintenance_interval,criticality,instructions,safety_precautions,tools_needed,est_minutes,reason,engineering_rationale')
       .eq('pm_plan_id', planId);
-    
+
     if (tasksError) {
       console.error('📋 Error fetching parent PM tasks:', tasksError);
       throw tasksError;
     }
-    
+
     console.log('📋 Parent PM tasks fetched:', tasksData);
     return tasksData || [];
   } catch (error) {
@@ -2443,14 +2453,14 @@ export const suggestChildAssets = async (parentAssetData) => {
       } catch (e) {
         console.error('❌ Non-JSON error response:', errorText);
       }
-      
+
       console.error('❌ API Error Details:', {
         status: response.status,
         statusText: response.statusText,
         errorData,
         rawResponse: errorText
       });
-      
+
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
     }
 
