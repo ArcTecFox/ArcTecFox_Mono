@@ -18,6 +18,7 @@ const SuperAdminManagement = React.lazy(() => import("./pages/SuperAdminManageme
 const TermsOfService = React.lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy"));
 const AcceptInvitation = React.lazy(() => import("./pages/AcceptInvitation"));
+const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
 
 const FAQ = React.lazy(() => import("./pages/FAQ"));
 const ApprovedSignup = React.lazy(() => import("./pages/ApprovedSignup"));
@@ -50,12 +51,13 @@ export default function App() {
                 {/* Public routes */}
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/faq" element={<FAQ />} /> {/* ← new FAQ route */}
                 <Route path="/terms-of-service" element={<TermsOfService />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
                 <Route path="/approved-signup" element={<ApprovedSignup />} />
-                
+
                 {/* Protected routes */}
                 <Route path="/dashboard" element={
                   <ProtectedRoute>

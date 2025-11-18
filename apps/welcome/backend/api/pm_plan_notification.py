@@ -92,7 +92,7 @@ async def send_pm_plan_notification_email(request: PMPlanNotificationRequest):
         # Send email using Resend
         response = resend.Emails.send({
             "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
-            "to": ["support@arctecfox.ai"],
+            "to": ["support@arctecfox.co"],
             "subject": subject,
             "html": html_content
         })
