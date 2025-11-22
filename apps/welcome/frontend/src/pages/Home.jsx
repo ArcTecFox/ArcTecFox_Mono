@@ -23,6 +23,8 @@ export default function Home() {
   const [formState, setFormState] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [resetFormTrigger, setResetFormTrigger] = useState(0);
+  const [emailSent, setEmailSent] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -115,15 +117,11 @@ export default function Home() {
       await new Promise(resolve => setTimeout(resolve, 300));
       setShowLoadingModal(false);
 
-      // Show success toast notification with email confirmation message
-      toast({
-        title: "Check Your Email!",
-        description: `We've sent a confirmation link to ${email}. Click the link to receive your PM plan. Check your spam folder if you don't see it.`,
-        variant: "default",
-        duration: 10000  // Longer duration so user can read the message
-      });
+      // Show success state instead of form
+      setEmailSent(true);
+      setSubmittedEmail(email);
 
-      // Clear the form after successful generation
+      // Clear the form state
       setResetFormTrigger(prev => prev + 1);
       setAssetName("");
       setCompletion(0);
@@ -238,15 +236,66 @@ export default function Home() {
         {/* GENERATOR */}
         <section id="pm-planner-section" className="max-w-5xl mx-auto px-4 py-16">
           <h2 className="text-2xl sm:text-3xl font-bold mb-6">Free Preventive Maintenance Plan Generator</h2>
-          <ProgressBar
-            progress={completion}
-            label={
-              assetName
-                ? `You’re close — finalize the structured plan for “${assetName}”.`
-                : `Answer a few fields to generate your structured baseline plan.`
-            }
-          />
-          <PMPlannerOpen onChange={handlePlannerProgress} onGenerate={handlePlannerSubmit} disabled={submitting} />
+
+          {emailSent ? (
+            /* Success Message */
+            <div className="bg-white border-2 border-green-500 rounded-lg p-12 text-center shadow-lg">
+              <div className="mb-6">
+                <svg className="w-20 h-20 text-green-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" />
+                </svg>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-4">Check Your Email!</h3>
+              <p className="text-lg text-gray-700 mb-2">
+                We've sent a confirmation link to:
+              </p>
+              <p className="text-xl font-semibold text-blue-600 mb-6">
+                {submittedEmail}
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6 text-left max-w-2xl mx-auto">
+                <h4 className="font-semibold text-gray-900 mb-3">Next Steps:</h4>
+                <ol className="space-y-2 text-gray-700">
+                  <li className="flex items-start">
+                    <span className="font-bold mr-2">1.</span>
+                    <span>Check your inbox for an email from ArcTecFox</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold mr-2">2.</span>
+                    <span>Click the "Confirm Email & Get Your PM Plan" button</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold mr-2">3.</span>
+                    <span>We'll immediately email you the PDF with your custom PM plan</span>
+                  </li>
+                </ol>
+              </div>
+              <p className="text-sm text-gray-600 mb-8">
+                Don't see it? Check your spam folder. The confirmation link expires in 24 hours.
+              </p>
+              <button
+                onClick={() => {
+                  setEmailSent(false);
+                  setSubmittedEmail("");
+                }}
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
+              >
+                <span>⚡</span> Generate Another Plan
+              </button>
+            </div>
+          ) : (
+            /* Original Form */
+            <>
+              <ProgressBar
+                progress={completion}
+                label={
+                  assetName
+                    ? `You're close — finalize the structured plan for "${assetName}".`
+                    : `Answer a few fields to generate your structured baseline plan.`
+                }
+              />
+              <PMPlannerOpen onChange={handlePlannerProgress} onGenerate={handlePlannerSubmit} disabled={submitting} />
+            </>
+          )}
         </section>
 
         {/* FINAL CTA */}

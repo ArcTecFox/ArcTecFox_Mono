@@ -605,20 +605,44 @@ Return the response as a JSON array with all fields populated.
 """
 
         model = get_gemini_model()
-        ai_response = model.generate_content(prompt)
-        
-        # Parse AI response
-        response_text = ai_response.text.strip()
-        if response_text.startswith('```json'):
-            response_text = response_text[7:]
-        if response_text.endswith('```'):
-            response_text = response_text[:-3]
-        
-        tasks = json.loads(response_text)
-        if not isinstance(tasks, list):
-            tasks = [tasks]
-        
-        logger.info(f"✅ Generated {len(tasks)} PM tasks")
+        tasks = None
+
+        # Retry up to 3 times if AI returns invalid data
+        for attempt in range(1, 4):
+            try:
+                ai_response = model.generate_content(prompt)
+                response_text = ai_response.text.strip()
+
+                # Clean response
+                if response_text.startswith('```json'):
+                    response_text = response_text[7:]
+                if response_text.endswith('```'):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+
+                # Parse JSON
+                tasks = json.loads(response_text)
+                if not isinstance(tasks, list):
+                    tasks = [tasks]
+
+                # Validate - check if first task has real content
+                if tasks and len(tasks) > 0:
+                    first_task = tasks[0]
+                    task_name = first_task.get("Task name") or first_task.get("task_name") or ""
+                    if task_name and task_name != "Task":
+                        logger.info(f"✅ Generated {len(tasks)} PM tasks (attempt {attempt})")
+                        break  # Success!
+
+                logger.warning(f"⚠️ Attempt {attempt} returned invalid data, retrying...")
+                tasks = None
+
+            except Exception as e:
+                logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
+                tasks = None
+
+        # If all retries failed, give up
+        if not tasks:
+            raise HTTPException(status_code=500, detail="Unable to generate PM plan. Please try again.")
         
         # Step 2: Generate confirmation token and save lead to database
         confirmation_token = secrets.token_urlsafe(32)  # Secure random token
@@ -949,21 +973,7 @@ async def confirm_email(token: str, request: Request):
             frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
             return RedirectResponse(url=f"{frontend_url}/confirm-email?error=email_failed")
 
-        # Send support notification about confirmed plan
-        try:
-            logger.info(f"📨 Sending support notification for {lead['email']}...")
-            await send_plan_generated_notification(
-                email=lead["email"],
-                full_name=full_name,
-                company_name=lead.get("company_name", "Unknown"),
-                asset_name=pm_plan.get("asset_name")
-            )
-            logger.info(f"✅ Support notification sent")
-        except Exception as e:
-            logger.error(f"❌ Failed to send support notification: {e}")
-            # Don't fail the whole process if notification fails
-
-        # Send access request notification if applicable
+        # Send access request notification with PDF if applicable
         try:
             # Check if there's a pending access request for this lead
             access_request = service_client.table("access_requests")\
@@ -974,13 +984,15 @@ async def confirm_email(token: str, request: Request):
                 .execute()
 
             if access_request.data:
-                logger.info(f"📨 Sending access request notification for {lead['email']}...")
+                logger.info(f"📨 Sending access request notification with PDF for {lead['email']}...")
                 await send_notification_email(
                     email=lead["email"],
                     full_name=access_request.data.get("full_name", full_name),
-                    company_name=lead.get("company_name")
+                    company_name=lead.get("company_name"),
+                    pdf_path=pdf_path,
+                    asset_name=pm_plan.get("asset_name")
                 )
-                logger.info(f"✅ Access request notification sent")
+                logger.info(f"✅ Access request notification with PDF sent")
         except Exception as e:
             # No access request or failed to send - not critical
             logger.info(f"ℹ️ No access request notification sent: {e}")
