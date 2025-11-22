@@ -46,9 +46,10 @@ class RejectionRequest(BaseModel):
 
 # Custom approval email function removed - now using Supabase's built-in invite system
 
-async def send_notification_email(email: str, full_name: str, company_name: str = None):
-    """Send email notification to support when user requests access"""
+async def send_notification_email(email: str, full_name: str, company_name: str = None, pdf_path: str = None, asset_name: str = None):
+    """Send email notification to support when user requests access, with optional PDF attachment"""
     import resend
+    import base64
 
     # Check if RESEND_API_KEY is configured
     if not os.getenv("RESEND_API_KEY"):
@@ -56,13 +57,16 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
         print(f"Simulated notification to support@arctecfox.co:")
         print(f"  New access request from: {full_name} ({email})")
         print(f"  Company: {company_name or 'Not specified'}")
+        print(f"  PDF attached: {pdf_path is not None}")
         return {"status": "simulated"}
 
     # Initialize Resend
     resend.api_key = os.getenv("RESEND_API_KEY")
 
     # Create access request notification email
-    subject = f"New Access Request - {full_name} from {company_name or 'Unknown Company'}"
+    subject = f"New Access Request & Free PM Plan - {full_name} from {company_name or 'Unknown Company'}"
+
+    pdf_info = f"<p><strong>✅ Free PM Plan:</strong> The user's generated PM plan for <strong>{asset_name}</strong> is attached to this email.</p>" if pdf_path else ""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -74,6 +78,7 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
             .header {{ background-color: #f97316; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
             .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }}
             .info-box {{ margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #f97316; }}
+            .success-box {{ margin: 15px 0; padding: 15px; background: #ecfdf5; border-left: 4px solid #10b981; }}
             .button {{ display: inline-block; padding: 15px 30px; background-color: #4A90E2; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }}
             .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
         </style>
@@ -81,10 +86,10 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
     <body>
         <div class="container">
             <div class="header">
-                <h1>🔔 New Access Request</h1>
+                <h1>🔔 New Access Request & PM Plan Confirmed</h1>
             </div>
             <div class="content">
-                <p>A user has requested access to ArcTecFox PM Planner:</p>
+                <p>A user has confirmed their email, received their free PM plan, and requested access to ArcTecFox PM Planner:</p>
 
                 <div class="info-box">
                     <strong>Requestor Details:</strong><br>
@@ -94,8 +99,13 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
                     <strong>Requested:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
                 </div>
 
+                <div class="success-box">
+                    {pdf_info}
+                </div>
+
                 <p><strong>Action Required:</strong></p>
                 <ul>
+                    <li>Review the attached PM plan to understand the user's needs</li>
                     <li>Review the access request in the admin dashboard</li>
                     <li>Verify the user's identity and company affiliation</li>
                     <li>Approve or reject the request</li>
@@ -117,13 +127,28 @@ async def send_notification_email(email: str, full_name: str, company_name: str 
     """
 
     try:
-        # Send email using Resend
-        response = resend.Emails.send({
+        # Prepare email payload
+        email_payload = {
             "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
             "to": ["support@arctecfox.co"],
             "subject": subject,
             "html": html_content
-        })
+        }
+
+        # Add PDF attachment if provided
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, 'rb') as f:
+                pdf_content = f.read()
+            pdf_base64 = base64.b64encode(pdf_content).decode()
+
+            filename = f"PM_Plan_{asset_name.replace(' ', '_')}.pdf" if asset_name else "PM_Plan.pdf"
+            email_payload["attachments"] = [{
+                "filename": filename,
+                "content": pdf_base64
+            }]
+
+        # Send email using Resend
+        response = resend.Emails.send(email_payload)
 
         print(f"✅ Access request notification sent to support@arctecfox.co: {response}")
         return {"status": "sent", "email_id": response.get("id")}
