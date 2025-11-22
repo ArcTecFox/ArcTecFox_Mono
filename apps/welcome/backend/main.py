@@ -2,7 +2,8 @@
 import os
 import json
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import io
 import tempfile
@@ -51,6 +52,7 @@ from api.full_parent_create_prompt import router as parent_plan_router
 from api.access_requests import router as access_requests_router, send_notification_email
 from api.extract_asset_details import router as extract_details_router
 from api.pm_plan_notification import router as pm_plan_notification_router
+from api.email_confirmations import send_confirmation_email, send_delivery_email, send_plan_generated_notification
 from api.send_invitation import InvitationRequest, send_invitation_email
 from api.send_test_invitation import TestInvitationRequest, send_test_invitation_email
 from api.add_existing_user import AddExistingUserRequest, AddExistingUserResponse, add_existing_user_to_site
@@ -551,12 +553,16 @@ async def lead_capture_endpoint(
         # Get service client for database operations
         service_client = get_service_supabase_client()
 
-        # Check if email already has a free PM plan
-        logger.info(f"🔍 Checking if {lead_request.email} already has a free plan...")
-        existing_lead = service_client.table("pm_leads").select("id,submitted_at").eq("email", lead_request.email).execute()
+        # Check if email already has a confirmed free PM plan
+        logger.info(f"🔍 Checking if {lead_request.email} already has a confirmed free plan...")
+        existing_lead = service_client.table("pm_leads")\
+            .select("id,email_confirmed,status")\
+            .eq("email", lead_request.email)\
+            .eq("email_confirmed", True)\
+            .execute()
 
         if existing_lead.data and len(existing_lead.data) > 0:
-            logger.warning(f"⚠️ Email {lead_request.email} already has a free plan")
+            logger.warning(f"⚠️ Email {lead_request.email} already has a confirmed free plan")
             raise HTTPException(
                 status_code=400,
                 detail=f"This email address has already been used to generate a free PM plan. Each email can only generate one free plan."
@@ -614,24 +620,31 @@ Return the response as a JSON array with all fields populated.
         
         logger.info(f"✅ Generated {len(tasks)} PM tasks")
         
-        # Step 2: Save lead to database
-        # Using only columns that exist in the current schema
-        from datetime import datetime
+        # Step 2: Generate confirmation token and save lead to database
+        confirmation_token = secrets.token_urlsafe(32)  # Secure random token
+        token_created_at = datetime.now(timezone.utc)
+        token_expires_at = token_created_at + timedelta(hours=24)  # 24 hour expiration
+
         lead_payload = {
             "email": lead_request.email,
-            "notes": f"Company: {lead_request.company}, Environment: {plan_data.environment or 'Not specified'}, Context: {plan_data.additional_context or 'None'}",
-            "submitted_at": datetime.now().isoformat()
+            "company_name": lead_request.company,
+            "notes": f"Environment: {plan_data.environment or 'Not specified'}, Context: {plan_data.additional_context or 'None'}",
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "confirmation_token": confirmation_token,
+            "token_created_at": token_created_at.isoformat(),
+            "token_expires_at": token_expires_at.isoformat(),
+            "status": "pending",
+            "email_confirmed": False
         }
-        
+
         lead_result = service_client.table("pm_leads").insert(lead_payload).execute()
         lead_data = lead_result.data[0] if lead_result.data else None
         if not lead_data:
             raise HTTPException(status_code=500, detail="Failed to save lead")
-        logger.info(f"✅ Saved lead with ID: {lead_data['id']}")
+        logger.info(f"✅ Saved lead with ID: {lead_data['id']} and confirmation token")
         
         # Step 3: Save PM plan
         # Use current date if plan_start_date is not provided
-        from datetime import datetime
         plan_start_date = plan_data.date_of_plan_start or datetime.now().strftime('%Y-%m-%d')
         
         plan_payload = {
@@ -690,14 +703,14 @@ Return the response as a JSON array with all fields populated.
             tasks_result = service_client.table("pm_tasks").insert(tasks_payload).execute()
             logger.info(f"✅ Saved {len(tasks_payload)} PM tasks")
         
-        # Step 5: Create access request if requested
+        # Step 5: Create access request if requested (but don't send notification yet)
         if lead_request.requestAccess and lead_request.fullName:
             try:
                 logger.info(f"📧 Processing access request for {lead_request.email}")
-                
+
                 # Check if email already has a pending request
                 existing_request = service_client.table("access_requests").select("*").eq("email", lead_request.email).eq("status", "pending").execute()
-                
+
                 if not existing_request.data:
                     access_request_data = {
                         "email": lead_request.email,
@@ -705,75 +718,58 @@ Return the response as a JSON array with all fields populated.
                         "lead_id": lead_data['id'],
                         "status": "pending"
                     }
-                    
+
                     access_result = service_client.table("access_requests").insert(access_request_data).execute()
-                    logger.info(f"✅ Created access request record for {lead_request.email}")
-                    
-                    # Send notification email to support
-                    logger.info(f"📨 Attempting to send notification email to support@arctecfox.co")
-                    await send_notification_email(
-                        email=lead_request.email,
-                        full_name=lead_request.fullName,
-                        company_name=lead_request.company
-                    )
-                    logger.info(f"✅ Email notification process completed for {lead_request.email}")
+                    logger.info(f"✅ Created access request record for {lead_request.email} (notification will be sent after email confirmation)")
                 else:
                     logger.info(f"⚠️ Access request already exists for {lead_request.email}")
             except Exception as e:
-                logger.error(f"❌ Failed to create access request or send email: {e}")
-                logger.error(f"Error details: {str(e)}")
+                logger.error(f"❌ Failed to create access request: {e}")
                 # Don't fail the whole process if access request fails
-        
-        # Step 6: Generate PDF with PM plan details
-        pdf_url = None
+
+        # Step 6: Send confirmation email
         try:
-            # Format tasks data for PDF export function
-            formatted_tasks = []
-            for task in tasks:
-                formatted_task = {
-                    'task_name': task.get("Task name") or task.get("task_name") or "Task",
-                    'asset_name': plan_data.name,
-                    'maintenance_interval': task.get("Maintenance interval") or task.get("maintenance_interval"),
-                    'instructions': task.get("Step-by-step instructions") or task.get("instructions"),
-                    'reason': task.get("Reason for the task") or task.get("reason"),
-                    'engineering_rationale': task.get("Engineering rationale") or task.get("engineering_rationale"),
-                    'safety_precautions': task.get("Safety precautions") or task.get("safety_precautions"),
-                    'common_failures_prevented': task.get("Common failures prevented") or task.get("common_failures_prevented"),
-                    'usage_insights': task.get("Usage insights") or task.get("usage_insights"),
-                    'time_to_complete': f"{task.get('Estimated time in minutes') or task.get('est_minutes') or 'N/A'} minutes",
-                    'tools_needed': task.get("Tools needed") or task.get("tools_needed"),
-                    'no_techs_needed': task.get("Number of technicians needed") or task.get("no_techs_needed") or 1,
-                    'consumables': task.get("Consumables required") or task.get("consumables"),
-                    'criticality': task.get("Criticality") or task.get("criticality") or "Medium"
-                }
-                formatted_tasks.append(formatted_task)
-            
-            # Generate PDF
-            pdf_path = export_pm_plans_data_to_pdf(formatted_tasks)
-            
-            # Store PDF filename for download endpoint
-            pdf_filename = os.path.basename(pdf_path)
-            # Store in temporary location for download
-            temp_pdf_dir = "/tmp/pm_plans"
-            os.makedirs(temp_pdf_dir, exist_ok=True)
-            final_pdf_path = os.path.join(temp_pdf_dir, f"{plan_data_result['id']}_{pdf_filename}")
-            os.rename(pdf_path, final_pdf_path)
-            
-            # Create download URL
-            pdf_url = f"/api/download-pm-plan-pdf/{plan_data_result['id']}/{pdf_filename}"
-            logger.info(f"✅ Generated PDF for PM plan: {final_pdf_path}")
-            
+            # Use full name or fallback to "there"
+            user_name = lead_request.fullName if lead_request.fullName else "there"
+
+            logger.info(f"📨 Sending confirmation email to {lead_request.email}")
+            await send_confirmation_email(
+                email=lead_request.email,
+                full_name=user_name,
+                token=confirmation_token,
+                asset_name=plan_data.name
+            )
+
+            # Update lead with confirmation email sent timestamp
+            service_client.table("pm_leads")\
+                .update({"confirmation_email_sent_at": datetime.now(timezone.utc).isoformat()})\
+                .eq("id", lead_data['id'])\
+                .execute()
+
+            logger.info(f"✅ Confirmation email sent to {lead_request.email}")
+
         except Exception as e:
-            logger.error(f"⚠️ Failed to generate PDF: {e}")
-            # Don't fail the whole process if PDF generation fails
+            logger.error(f"❌ Failed to send confirmation email: {e}")
+            # Update lead with failure status
+            service_client.table("pm_leads")\
+                .update({
+                    "status": "failed",
+                    "failure_reason": f"Failed to send confirmation email: {str(e)}"
+                })\
+                .eq("id", lead_data['id'])\
+                .execute()
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to send confirmation email. Please try again or contact support."
+            )
         
         return LeadCaptureResponse(
             success=True,
             data=tasks,
             lead=lead_data,
             plan=plan_data_result,
-            message="Lead captured and PM plan generated successfully",
-            pdf_url=pdf_url
+            message="Please check your email to confirm and receive your PM plan",
+            pdf_url=None  # No PDF URL - will be sent via email after confirmation
         )
         
     except json.JSONDecodeError as e:
@@ -784,6 +780,220 @@ Return the response as a JSON array with all fields populated.
     except Exception as e:
         logger.error(f"❌ Error in lead capture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Email confirmation endpoint - public access for confirming free PM plan emails
+@app.get("/api/confirm-email/{token}")
+async def confirm_email(token: str, request: Request):
+    """
+    Confirm email address and send PM plan PDF
+
+    Flow:
+    1. Validate token (exists, not expired, not already confirmed)
+    2. Mark as confirmed
+    3. Generate PDF with plan data
+    4. Send delivery email with PDF attachment
+    5. Send support notifications (if applicable)
+    6. Redirect to frontend success page
+    """
+    try:
+        from fastapi.responses import RedirectResponse
+
+        service_client = get_service_supabase_client()
+        logger.info(f"🔍 Email confirmation request for token: {token[:8]}...")
+
+        # Get lead with confirmation token (join with pm_plans and pm_tasks)
+        lead_result = service_client.table("pm_leads")\
+            .select("*, pm_plans!inner(*, pm_tasks(*))")\
+            .eq("confirmation_token", token)\
+            .single()\
+            .execute()
+
+        if not lead_result.data:
+            logger.warning(f"⚠️ Invalid confirmation token: {token[:8]}...")
+            frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            return RedirectResponse(url=f"{frontend_url}/confirm-email?error=invalid")
+
+        lead = lead_result.data
+        logger.info(f"✅ Found lead for token: {lead['email']}")
+
+        # Check if already confirmed
+        if lead["email_confirmed"]:
+            logger.info(f"⚠️ Email already confirmed for: {lead['email']}")
+            frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            return RedirectResponse(url=f"{frontend_url}/confirm-email?status=already_confirmed")
+
+        # Check expiration
+        token_expires_at = datetime.fromisoformat(lead["token_expires_at"])
+        if datetime.now(timezone.utc) > token_expires_at:
+            logger.warning(f"⏰ Token expired for: {lead['email']}")
+            # Mark as expired
+            service_client.table("pm_leads")\
+                .update({"status": "expired"})\
+                .eq("id", lead["id"])\
+                .execute()
+            frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            return RedirectResponse(url=f"{frontend_url}/confirm-email?error=expired&email={lead['email']}")
+
+        # Increment confirmation attempts
+        attempts = lead.get("confirmation_attempts", 0) + 1
+
+        # Mark as confirmed
+        client_ip = request.client.host if request.client else None
+        service_client.table("pm_leads")\
+            .update({
+                "status": "confirmed",
+                "email_confirmed": True,
+                "email_confirmed_at": datetime.now(timezone.utc).isoformat(),
+                "confirmed_from_ip": client_ip,
+                "confirmation_attempts": attempts
+            })\
+            .eq("id", lead["id"])\
+            .execute()
+
+        logger.info(f"✅ Email confirmed for: {lead['email']}")
+
+        # Generate PDF
+        try:
+            # Get PM plan and tasks from joined data
+            pm_plans = lead.get("pm_plans", [])
+            if not pm_plans:
+                raise Exception("No PM plan found for this lead")
+
+            pm_plan = pm_plans[0] if isinstance(pm_plans, list) else pm_plans
+            tasks = pm_plan.get("pm_tasks", [])
+
+            if not tasks:
+                raise Exception("No tasks found for this PM plan")
+
+            # Format tasks for PDF export
+            formatted_tasks = []
+            for task in tasks:
+                formatted_task = {
+                    'task_name': task.get("task_name", "Task"),
+                    'asset_name': pm_plan.get("asset_name"),
+                    'maintenance_interval': task.get("maintenance_interval"),
+                    'instructions': task.get("instructions"),
+                    'reason': task.get("reason"),
+                    'engineering_rationale': task.get("engineering_rationale"),
+                    'safety_precautions': task.get("safety_precautions"),
+                    'common_failures_prevented': task.get("common_failures_prevented"),
+                    'usage_insights': task.get("usage_insights"),
+                    'time_to_complete': f"{task.get('est_minutes', 'N/A')} minutes",
+                    'tools_needed': task.get("tools_needed"),
+                    'no_techs_needed': task.get("no_techs_needed", 1),
+                    'consumables': task.get("consumables"),
+                    'criticality': task.get("criticality", "Medium")
+                }
+                formatted_tasks.append(formatted_task)
+
+            # Generate PDF
+            logger.info(f"📄 Generating PDF for {lead['email']}...")
+            pdf_path = export_pm_plans_data_to_pdf(formatted_tasks)
+
+            # Update lead with PDF generated flag
+            service_client.table("pm_leads")\
+                .update({"pdf_generated": True})\
+                .eq("id", lead["id"])\
+                .execute()
+
+            logger.info(f"✅ PDF generated: {pdf_path}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to generate PDF: {e}")
+            service_client.table("pm_leads")\
+                .update({
+                    "pdf_generation_failed": True,
+                    "failure_reason": f"PDF generation failed: {str(e)}"
+                })\
+                .eq("id", lead["id"])\
+                .execute()
+            frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            return RedirectResponse(url=f"{frontend_url}/confirm-email?error=pdf_failed")
+
+        # Send delivery email with PDF
+        try:
+            # Get user name from notes or use email
+            full_name = lead.get("company_name", "there")  # Use company name as fallback
+
+            logger.info(f"📨 Sending delivery email to {lead['email']}...")
+            await send_delivery_email(
+                email=lead["email"],
+                full_name=full_name,
+                pdf_path=pdf_path,
+                asset_name=pm_plan.get("asset_name")
+            )
+
+            # Update lead with delivery email sent timestamp
+            service_client.table("pm_leads")\
+                .update({"delivery_email_sent_at": datetime.now(timezone.utc).isoformat()})\
+                .eq("id", lead["id"])\
+                .execute()
+
+            logger.info(f"✅ Delivery email sent to {lead['email']}")
+
+            # Clean up PDF file
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+                logger.info(f"🗑️ Cleaned up PDF: {pdf_path}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to send delivery email: {e}")
+            service_client.table("pm_leads")\
+                .update({"failure_reason": f"Delivery email failed: {str(e)}"})\
+                .eq("id", lead["id"])\
+                .execute()
+            # Clean up PDF even if email fails
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+            return RedirectResponse(url=f"{frontend_url}/confirm-email?error=email_failed")
+
+        # Send support notification about confirmed plan
+        try:
+            logger.info(f"📨 Sending support notification for {lead['email']}...")
+            await send_plan_generated_notification(
+                email=lead["email"],
+                full_name=full_name,
+                company_name=lead.get("company_name", "Unknown"),
+                asset_name=pm_plan.get("asset_name")
+            )
+            logger.info(f"✅ Support notification sent")
+        except Exception as e:
+            logger.error(f"❌ Failed to send support notification: {e}")
+            # Don't fail the whole process if notification fails
+
+        # Send access request notification if applicable
+        try:
+            # Check if there's a pending access request for this lead
+            access_request = service_client.table("access_requests")\
+                .select("*")\
+                .eq("lead_id", lead["id"])\
+                .eq("status", "pending")\
+                .single()\
+                .execute()
+
+            if access_request.data:
+                logger.info(f"📨 Sending access request notification for {lead['email']}...")
+                await send_notification_email(
+                    email=lead["email"],
+                    full_name=access_request.data.get("full_name", full_name),
+                    company_name=lead.get("company_name")
+                )
+                logger.info(f"✅ Access request notification sent")
+        except Exception as e:
+            # No access request or failed to send - not critical
+            logger.info(f"ℹ️ No access request notification sent: {e}")
+
+        # Redirect to frontend success page
+        frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+        return RedirectResponse(url=f"{frontend_url}/confirm-email?status=success")
+
+    except Exception as e:
+        logger.error(f"❌ Error confirming email: {e}")
+        frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+        return RedirectResponse(url=f"{frontend_url}/confirm-email?error=server_error")
+
 
 # Download PM Plan PDF endpoint - public access for lead capture PDFs
 @app.get("/api/download-pm-plan-pdf/{plan_id}/{filename}")

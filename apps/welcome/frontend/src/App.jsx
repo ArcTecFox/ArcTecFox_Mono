@@ -22,6 +22,7 @@ const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
 
 const FAQ = React.lazy(() => import("./pages/FAQ"));
 const ApprovedSignup = React.lazy(() => import("./pages/ApprovedSignup"));
+const ConfirmEmail = React.lazy(() => import("./pages/ConfirmEmail"));
 
 
 function ProtectedRoute({ children }) {
@@ -57,6 +58,7 @@ export default function App() {
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
                 <Route path="/approved-signup" element={<ApprovedSignup />} />
+                <Route path="/confirm-email" element={<ConfirmEmail />} />
 
                 {/* Protected routes */}
                 <Route path="/dashboard" element={

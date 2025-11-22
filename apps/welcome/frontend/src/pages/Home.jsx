@@ -5,8 +5,7 @@ import LeadCaptureModal from "../components/LeadCaptureModal";
 import PMPlannerOpen from "../pages/PMPlannerOpen";
 import ProgressBar from "../components/ProgressBar";
 import ParentPlanLoadingModal from "../components/assets/ParentPlanLoadingModal";
-import { captureLeadWithPlan, sendPMPlanNotification } from "../api";
-import { exportPlanToExcel } from "../utils/exportPlan";
+import { captureLeadWithPlan } from "../api";
 import { useToast } from "../hooks/use-toast";
 import SEO from "../components/SEO";
 import { Helmet } from "react-helmet-async";
@@ -116,67 +115,13 @@ export default function Home() {
       await new Promise(resolve => setTimeout(resolve, 300));
       setShowLoadingModal(false);
 
-      // Send notification email to support
-      try {
-        await sendPMPlanNotification({
-          user_name: fullName,
-          user_email: email,
-          company_name: company,
-          asset_name: formState?.asset_name,
-          asset_type: formState?.asset_type
-        });
-      } catch (emailError) {
-        // Support notification failed (non-critical)
-      }
-
-      // Auto-export to Excel for the user
-      exportPlanToExcel({ plan: result.plan, tasks: result.data });
-
-      // Download PDF if available
-      if (result.pdf_url) {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-        const pdfUrl = `${backendUrl}${result.pdf_url}`;
-
-        // Use window.open as a fallback for better cross-browser compatibility
-        try {
-          // Try fetch first to ensure the file exists
-          const response = await fetch(pdfUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `PM_Plan_${result.plan.id}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-          } else {
-            console.error('❌ PDF download failed: Response not OK', response.status);
-          }
-        } catch (error) {
-          console.error('❌ PDF download error:', error);
-          // Fallback: open in new tab
-          window.open(pdfUrl, '_blank');
-        }
-      }
-
-      // Show success toast notification
-      if (requestAccess) {
-        toast({
-          title: "Plan Created & Access Requested!",
-          description: "You'll receive an email when your account is approved.",
-          variant: "default"
-        });
-      } else {
-        toast({
-          title: "PM Plan Generated Successfully!",
-          description: result.pdf_url 
-            ? "Your preventive maintenance plan has been downloaded as PDF and Excel."
-            : "Your preventive maintenance plan has been downloaded as Excel.",
-          variant: "default"
-        });
-      }
+      // Show success toast notification with email confirmation message
+      toast({
+        title: "Check Your Email!",
+        description: `We've sent a confirmation link to ${email}. Click the link to receive your PM plan. Check your spam folder if you don't see it.`,
+        variant: "default",
+        duration: 10000  // Longer duration so user can read the message
+      });
 
       // Clear the form after successful generation
       setResetFormTrigger(prev => prev + 1);
