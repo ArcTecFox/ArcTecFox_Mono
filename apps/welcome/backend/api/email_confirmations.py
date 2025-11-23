@@ -88,7 +88,7 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
         "to": [email],
         "subject": subject,
         "template": {
-            "id": "arcfox-confirmation",  # Resend template ID/alias
+            "id": "arctecfox-confirmation-email",  # Resend template ID/alias
             "variables": {
                 "name": safe_name,
                 "asset_name": asset_name,
@@ -167,7 +167,7 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
         "to": [email],
         "subject": subject,
         "template": {
-            "id": "arcfox-pm-plan-delivery",
+            "id": "arctecfox-pm-plan-delivery",
             "variables": {
                 "name": safe_name,
                 "asset_name": asset_name,
