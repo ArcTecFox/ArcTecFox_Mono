@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { 
-  fetchUserSites, 
-  fetchSiteUsers, 
+import {
+  fetchUserSites,
+  fetchSiteUsers,
   fetchAllRoles,
   fetchAllSitesWithCompanies,
   updateUser,
@@ -14,13 +14,22 @@ import {
   getUserAdminSites,
   addExistingUserToSite,
   searchCompanyUsers,
+  fetchCompaniesByAdmin,
+  fetchCompanySites,
   supabase
 } from '../api';
 
 const UserManagement = () => {
   const { user } = useAuth();
+
+  // Company and Site selection states
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState('');
   const [sites, setSites] = useState([]);
+  const [allSites, setAllSites] = useState([]); // Store all sites
   const [selectedSite, setSelectedSite] = useState('');
+
+  // User management states
   const [users, setUsers] = useState([]);
   const [allRoles, setAllRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +44,7 @@ const UserManagement = () => {
   const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
   const [allSystemUsers, setAllSystemUsers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  
+
   // Dual-track user management states
   const [addUserMode, setAddUserMode] = useState('existing'); // 'invitation' or 'existing' - default to existing since invitation is under construction
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,10 +66,16 @@ const UserManagement = () => {
   };
 
   useEffect(() => {
-    loadSites();
+    loadCompanies();
     loadAllRoles();
     loadAllSystemUsers();
   }, [user]);
+
+  useEffect(() => {
+    if (selectedCompany) {
+      loadSitesForCompany(selectedCompany);
+    }
+  }, [selectedCompany]);
 
   useEffect(() => {
     if (selectedSite) {
@@ -91,36 +106,49 @@ const UserManagement = () => {
     }
   };
 
-  const loadSites = async () => {
+  const loadCompanies = async () => {
     try {
       setLoading(true);
-      
+
       // Check if user is super admin
       const userIsSuperAdmin = await checkIfUserIsSuperAdmin();
       const isAdmin = await isUserSiteAdmin(user.id);
       setIsSuperAdmin(userIsSuperAdmin);
-      
+
       if (!isAdmin) {
         setError('You do not have permission to manage users');
         setLoading(false);
         return;
       }
 
-      let sitesData;
-      if (userIsSuperAdmin) {
-        // Super admin sees all sites
-        sitesData = await fetchAllSitesWithCompanies();
+      // Load companies accessible to this admin
+      const companiesData = await fetchCompaniesByAdmin(user.id);
+      setCompanies(companiesData);
+
+      if (companiesData.length > 0) {
+        setSelectedCompany(companiesData[0].id);
       } else {
-        // Regular admins see only their assigned sites
-        const adminSites = await getUserAdminSites(user.id);
-        sitesData = adminSites.map(adminSite => ({
-          id: adminSite.sites.id,
-          name: adminSite.sites.name,
-          companies: adminSite.sites.companies
-        }));
+        setSelectedCompany('');
+        setSites([]);
+        setUsers([]);
       }
-      
+    } catch (err) {
+      setError('Failed to load companies');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadSitesForCompany = async (companyId) => {
+    try {
+      console.log('Loading sites for company:', companyId);
+
+      // Load sites for selected company
+      const sitesData = await fetchCompanySites(companyId);
       setSites(sitesData);
+      setAllSites(sitesData); // Store for filtering
+
       if (sitesData.length > 0) {
         setSelectedSite(sitesData[0].id);
       } else {
@@ -128,11 +156,19 @@ const UserManagement = () => {
         setUsers([]);
       }
     } catch (err) {
-      setError('Failed to load sites');
+      setError('Failed to load sites for company');
       console.error(err);
-    } finally {
-      setLoading(false);
+      setSites([]);
+      setSelectedSite('');
+      setUsers([]);
     }
+  };
+
+  const handleCompanyChange = (companyId) => {
+    setSelectedCompany(companyId);
+    setSelectedSite(''); // Reset site selection
+    setSites([]); // Clear sites
+    setUsers([]); // Clear users
   };
 
   const loadAllRoles = async () => {
@@ -161,16 +197,16 @@ const UserManagement = () => {
 
   const handleEmailChange = (value) => {
     setNewUserEmail(value);
-    
+
     if (value.length >= 3) {
       const currentSiteUserEmails = users.map(u => u.email);
       const filtered = allSystemUsers
-        .filter(user => 
+        .filter(user =>
           user.email.toLowerCase().includes(value.toLowerCase()) &&
           !currentSiteUserEmails.includes(user.email)
         )
         .slice(0, 5);
-      
+
       setEmailSuggestions(filtered);
       setShowEmailSuggestions(filtered.length > 0);
     } else {
@@ -182,11 +218,11 @@ const UserManagement = () => {
   // Search for existing users within the company
   const handleSearchExistingUsers = async (term) => {
     setSearchTerm(term);
-    
-    if (term.length >= 2 && selectedSite) {
+
+    if (term.length >= 2 && selectedSite && selectedCompany) {
       setIsSearching(true);
       try {
-        const results = await searchCompanyUsers(selectedSite, term);
+        const results = await searchCompanyUsers(selectedSite, selectedCompany, term);
         setSearchResults(results.users);
         setError(null);
       } catch (err) {
@@ -212,7 +248,7 @@ const UserManagement = () => {
     try {
       setError(null);
       await addExistingUserToSite(selectedUser.email, selectedSite);
-      
+
       // Reload site users and reset form
       loadSiteUsers();
       setAddUserMode('invitation');
@@ -241,7 +277,7 @@ const UserManagement = () => {
 
   const loadSiteUsers = async () => {
     if (!selectedSite) return;
-    
+
     setLoading(true);
     try {
       const usersData = await fetchSiteUsers(selectedSite);
@@ -340,22 +376,22 @@ const UserManagement = () => {
       // Clear any previous messages
       setError(null);
       setSuccess(null);
-      
+
       // Use existing backend invitation system (now with Supabase native email support)
       await sendInvitation(newUserEmail, selectedSite, newUserName);
-      
+
       // Show success message
       setSuccess(`✅ Invitation sent successfully to ${newUserEmail}! They will receive an email with instructions to join your team.`);
-      
+
       // Reset form
       setNewUserEmail('');
       setNewUserName('');
       setEmailSuggestions([]);
       setShowEmailSuggestions(false);
-      
+
       // Note: Don't reload site users immediately as the user hasn't accepted yet
       // They will appear in the user list after accepting the invitation
-      
+
     } catch (err) {
       setSuccess(null); // Clear any success message
       if (err.message === 'User is already a member of this site') {
@@ -371,7 +407,11 @@ const UserManagement = () => {
 
   const getSelectedSiteInfo = () => {
     const site = sites.find(s => s.id === selectedSite);
-    return site ? `${site.companies.name} - ${site.name}` : '';
+    const company = companies.find(c => c.id === selectedCompany);
+    if (site && company) {
+      return `${company.name} - ${site.name}`;
+    }
+    return '';
   };
 
   if (loading) {
@@ -407,7 +447,7 @@ const UserManagement = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
             <p className="text-sm text-gray-600 mt-1">
-              {isSuperAdmin ? 'Manage users across all sites' : 'Manage users for your assigned sites'}
+              {isSuperAdmin ? 'Manage users across all companies and sites' : 'Manage users for your assigned companies'}
             </p>
           </div>
         </div>
@@ -424,33 +464,58 @@ const UserManagement = () => {
           </div>
         )}
 
-        {/* Site Selection */}
-        <div className="mb-6 flex items-center space-x-4">
+        {/* Company and Site Selection */}
+        <div className="mb-6 space-y-4">
+          {/* Company Dropdown */}
           <div className="flex-1">
-            <label htmlFor="site-select" className="block text-sm font-medium text-gray-700 mb-2">
-              Select Site to Manage Users
+            <label htmlFor="company-select" className="block text-sm font-medium text-gray-700 mb-2">
+              Select Company
             </label>
             <select
-              id="site-select"
-              value={selectedSite}
-              onChange={(e) => setSelectedSite(e.target.value)}
+              id="company-select"
+              value={selectedCompany}
+              onChange={(e) => handleCompanyChange(e.target.value)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Select a site...</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.companies.name} - {site.name}
+              <option value="">Select a company...</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
                 </option>
               ))}
             </select>
           </div>
-          {selectedSite && (
-            <button
-              onClick={() => setShowAddUser(true)}
-              className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              Add User
-            </button>
+
+          {/* Site Dropdown - only shown if company is selected */}
+          {selectedCompany && (
+            <div className="flex items-end space-x-4">
+              <div className="flex-1">
+                <label htmlFor="site-select" className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Site to Manage Users
+                </label>
+                <select
+                  id="site-select"
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select a site...</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedSite && (
+                <button
+                  onClick={() => setShowAddUser(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
+                >
+                  Add User
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -461,7 +526,7 @@ const UserManagement = () => {
               <h3 className="text-lg font-medium text-gray-800">
                 Add User to {getSelectedSiteInfo()}
               </h3>
-              
+
               {/* Track Selection Toggle */}
               <div className="flex bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <button
@@ -505,7 +570,7 @@ const UserManagement = () => {
             {addUserMode === 'invitation' ? (
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
                 <p className="text-sm text-blue-800">
-                  <strong>📧 Email Invitations</strong><br/>
+                  <strong>Email Invitations</strong><br/>
                   Send a professional invitation email to new users. They'll receive a secure link to join your team and access this site.
                   Perfect for onboarding new team members who don't have accounts yet.
                 </p>
@@ -513,12 +578,12 @@ const UserManagement = () => {
             ) : (
               <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4">
                 <p className="text-sm text-green-800">
-                  <strong>Existing User Track:</strong> Search and add users who already have accounts within your company. 
+                  <strong>Existing User Track:</strong> Search and add users who already have accounts within your company.
                   No email required - they get immediate access to this site.
                 </p>
               </div>
             )}
-            
+
             {/* Conditional form content based on mode */}
             {addUserMode === 'existing' ? (
               /* TRACK 2: EXISTING USER SEARCH */
@@ -538,7 +603,7 @@ const UserManagement = () => {
                     <p className="text-sm text-gray-500 mt-1">Searching...</p>
                   )}
                 </div>
-                
+
                 {/* Search Results */}
                 {searchResults.length > 0 && (
                   <div className="border border-gray-200 rounded-md max-h-60 overflow-y-auto">
@@ -568,11 +633,11 @@ const UserManagement = () => {
                     ))}
                   </div>
                 )}
-                
+
                 {searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && (
                   <p className="text-sm text-gray-500">No matching users found in your company.</p>
                 )}
-                
+
                 <div className="flex space-x-2">
                   <button
                     type="button"
@@ -643,7 +708,7 @@ const UserManagement = () => {
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                 >
-                  📧 Send Invitation
+                  Send Invitation
                 </button>
                 <button
                   type="button"
@@ -783,7 +848,7 @@ const UserManagement = () => {
                   ))}
                 </tbody>
               </table>
-              
+
               {users.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   No users found for this site.
@@ -793,15 +858,21 @@ const UserManagement = () => {
           </div>
         )}
 
-        {!selectedSite && sites.length > 0 && (
+        {!selectedSite && selectedCompany && sites.length > 0 && (
           <div className="text-center py-8 text-gray-500">
             Please select a site to view and manage users.
           </div>
         )}
 
-        {sites.length === 0 && (
+        {!selectedCompany && companies.length > 0 && (
           <div className="text-center py-8 text-gray-500">
-            No sites available for user management.
+            Please select a company to get started.
+          </div>
+        )}
+
+        {companies.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            No companies available for user management.
           </div>
         )}
       </div>

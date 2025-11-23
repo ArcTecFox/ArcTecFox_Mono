@@ -56,7 +56,7 @@ export default function ConfirmEmail() {
           {status === 'loading' && (
             <>
               <div className="flex justify-center mb-4">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-500"></div>
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 Confirming Your Email
@@ -106,7 +106,7 @@ export default function ConfirmEmail() {
 
               <Link
                 to="/"
-                className="inline-block w-full bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition font-semibold"
+                className="inline-block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
               >
                 Return to Home
               </Link>
@@ -142,14 +142,14 @@ export default function ConfirmEmail() {
               <div className="space-y-3">
                 <Link
                   to="/"
-                  className="block w-full bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition font-semibold"
+                  className="block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                 >
                   Return to Home
                 </Link>
 
                 <a
                   href="mailto:support@arctecfox.co"
-                  className="block w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition font-semibold"
+                  className="block w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                 >
                   Contact Support
                 </a>
@@ -176,14 +176,14 @@ export default function ConfirmEmail() {
               <div className="space-y-3">
                 <Link
                   to="/#pm-planner-section"
-                  className="block w-full bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition font-semibold"
+                  className="block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                 >
                   {errorType === 'expired' ? 'Generate New Plan' : 'Try Again'}
                 </Link>
 
                 <a
                   href="mailto:support@arctecfox.co"
-                  className="block w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition font-semibold"
+                  className="block w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                 >
                   Contact Support
                 </a>
