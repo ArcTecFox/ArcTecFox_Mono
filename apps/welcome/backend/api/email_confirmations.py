@@ -1,18 +1,18 @@
 """
 Email confirmation functions for free PM plan flow
+Now using Resend Templates for HTML/copy.
 """
 import os
 import logging
-import base64
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def _load_logo_base64() -> Optional[str]:
+def _load_logo_bytes() -> Optional[bytes]:
     """
-    Load the ArcTecFox logo from the frontend assets folder and return base64-encoded content.
+    Load the ArcTecFox logo from the frontend assets folder and return raw bytes.
     Returns None if the file cannot be found/read.
     """
     try:
@@ -38,9 +38,7 @@ def _load_logo_base64() -> Optional[str]:
             return None
 
         with open(logo_path, "rb") as f:
-            logo_bytes = f.read()
-
-        return base64.b64encode(logo_bytes).decode("utf-8")
+            return f.read()
 
     except Exception as e:
         logger.error(f"Error loading logo for email: {e}")
@@ -49,15 +47,12 @@ def _load_logo_base64() -> Optional[str]:
 
 async def send_confirmation_email(email: str, full_name: str, token: str, asset_name: str):
     """
-    Email #1 – Confirmation Email (Resend)
+    Email #1 – Confirmation Email (Resend Template: arcfox-confirmation)
 
-    Hi [Name],
-    Your preventive maintenance plan is almost ready.
-    Confirm your email so we can deliver your free plan and welcome guide.
+    Subject: "Confirm Your Email to Receive Your Free PM Plan"
     """
     import resend
 
-    # Check if RESEND_API_KEY is configured
     if not os.getenv("RESEND_API_KEY"):
         logger.warning("RESEND_API_KEY not configured, simulating confirmation email")
         print(f"Simulated confirmation email to: {email}")
@@ -65,113 +60,52 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
         print(f"  Asset: {asset_name}")
         return {"status": "simulated"}
 
-    # Initialize Resend
     resend.api_key = os.getenv("RESEND_API_KEY")
 
-    # Get backend URL for confirmation link
+    # Build confirmation URL (backend route that handles token)
     backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
     confirmation_link = f"{backend_url}/api/confirm-email/{token}"
 
-    subject = f"Confirm your email – your PM plan for {asset_name} is almost ready"
+    # ✅ New subject line
+    subject = "Confirm Your Email to Receive Your Free PM Plan"
 
-    # Load logo as base64 (for inline CID image)
-    logo_b64 = _load_logo_base64()
+    # Inline logo attachment (CID)
+    logo_bytes = _load_logo_bytes()
+    attachments = []
 
-    # Shorter, funnel-focused copy
+    if logo_bytes:
+        attachments.append({
+            "filename": "ArcTecFox-logo.jpg",
+            "content": list(logo_bytes),   # raw bytes -> list[int], per Resend docs
+            "content_id": "arcfox-logo",   # must match src="cid:arcfox-logo" in the template
+            "content_type": "image/jpeg",
+        })
+
     safe_name = full_name or "there"
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #111827; margin: 0; padding: 0; background-color: #f3f4f6; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 24px; }}
-            .card {{ background-color: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; padding: 24px 24px 32px; }}
-            .button {{
-                display: inline-block;
-                padding: 14px 28px;
-                background-color: #3b82f6;
-                color: white !important;
-                text-decoration: none;
-                border-radius: 999px;
-                font-weight: 600;
-                font-size: 15px;
-                margin: 20px 0;
-            }}
-            .button:hover {{ background-color: #2563eb; }}
-            .footer {{
-                margin-top: 24px;
-                padding-top: 16px;
-                border-top: 1px solid #e5e7eb;
-                font-size: 12px;
-                color: #6b7280;
-                text-align: center;
-            }}
-            .small-text {{ font-size: 13px; color: #4b5563; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="card">
+    params = {
+        "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
+        "to": [email],
+        "subject": subject,
+        "template": {
+            "id": "arcfox-confirmation",  # Resend template ID/alias
+            "variables": {
+                "name": safe_name,
+                "asset_name": asset_name,
+                "confirm_url": confirmation_link,
+                "year": datetime.utcnow().year,
+            },
+        },
+    }
 
-                <!-- Logo -->
-                <div style="text-align: center; margin-bottom: 16px;">
-                    <img src="cid:arcfox-logo" alt="ArcTecFox Logo" style="width: 120px; height: auto;" />
-                </div>
-
-                <p class="small-text">Hi {safe_name},</p>
-
-                <p class="small-text">
-                    Your preventive maintenance plan for <strong>{asset_name}</strong> is almost ready.
-                    Confirm your email so we can deliver your free plan and welcome guide.
-                </p>
-
-                <div style="text-align: center;">
-                    <a href="{confirmation_link}" class="button">
-                        Confirm My Email
-                    </a>
-                </div>
-
-                <p class="small-text" style="margin-top: 16px;">
-                    Or copy and paste this link into your browser:<br>
-                    <a href="{confirmation_link}" style="color: #3b82f6; word-break: break-all;">{confirmation_link}</a>
-                </p>
-
-                <div class="footer">
-                    <p>&copy; {datetime.utcnow().year} ArcTecFox. All rights reserved.</p>
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    if attachments:
+        params["attachments"] = attachments
 
     try:
-        # Build attachments list (logo as inline image if available)
-        attachments = []
-        if logo_b64:
-            attachments.append({
-                "filename": "ArcTecFox-logo.jpg",
-                "content": logo_b64,          # base64-encoded content
-                "content_id": "arcfox-logo",  # must match src="cid:arcfox-logo"
-                "content_type": "image/jpeg",
-            })
-
-        # Send email using Resend
-        params = {
-            "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
-            "to": [email],
-            "subject": subject,
-            "html": html_content,
-        }
-        if attachments:
-            params["attachments"] = attachments
-
         response = resend.Emails.send(params)
-
         logger.info(f"✅ Confirmation email sent to {email}: {response}")
-        return {"status": "sent", "email_id": response.get("id")}
+        email_id = response.get("id") if isinstance(response, dict) else None
+        return {"status": "sent", "email_id": email_id}
 
     except Exception as e:
         logger.error(f"❌ Error sending confirmation email: {e}")
@@ -180,156 +114,75 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
 
 async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_name: str):
     """
-    Email #2 – PM Plan Delivery
+    Email #2 – PM Plan Delivery (Resend Template: arcfox-pm-plan-delivery)
 
-    Hi [Name or Company],
-
-    Welcome to ArcTecFox!
-    Your preventive maintenance plan for [Asset Name] is attached below.
-
-    This plan is tailored to help you improve reliability, reduce downtime, and optimize maintenance scheduling.
+    Subject: "Your Preventive Maintenance Plan for {asset_name} Is Ready"
     """
     import resend
 
-    # Check if RESEND_API_KEY is configured
     if not os.getenv("RESEND_API_KEY"):
         logger.warning("RESEND_API_KEY not configured, simulating delivery email")
         print(f"Simulated delivery email to: {email}")
         print(f"  PDF path: {pdf_path}")
         return {"status": "simulated"}
 
-    # Initialize Resend
     resend.api_key = os.getenv("RESEND_API_KEY")
 
-    # Get frontend URL & optional demo URL
     frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
     demo_url = os.getenv("DEMO_URL", f"{frontend_url}/demo")
 
-    subject = f"Your preventive maintenance plan for {asset_name} is ready"
+    # ✅ New subject line, personalized with asset name
+    subject = f"Your Preventive Maintenance Plan for {asset_name} Is Ready"
 
-    # Load logo as base64 (for inline CID image)
-    logo_b64 = _load_logo_base64()
+    # Attach logo as CID
+    logo_bytes = _load_logo_bytes()
+    attachments = []
+
+    if logo_bytes:
+        attachments.append({
+            "filename": "ArcTecFox-logo.jpg",
+            "content": list(logo_bytes),
+            "content_id": "arcfox-logo",
+            "content_type": "image/jpeg",
+        })
+
+    # Attach PDF plan
+    try:
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+    except FileNotFoundError:
+        logger.error(f"PDF not found at {pdf_path}")
+        raise
+
+    attachments.append({
+        "filename": f"PM_Plan_{asset_name.replace(' ', '_')}.pdf",
+        "content": list(pdf_bytes),
+        "content_type": "application/pdf",
+    })
+
     safe_name = full_name or "there"
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #111827; margin: 0; padding: 0; background-color: #f3f4f6; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 24px; }}
-            .card {{ background-color: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; padding: 24px 24px 32px; }}
-            .cta-button {{
-                display: inline-block;
-                padding: 14px 28px;
-                background-color: #3b82f6;
-                color: white !important;
-                text-decoration: none;
-                border-radius: 999px;
-                font-weight: 600;
-                margin: 16px 0;
-            }}
-            .cta-button:hover {{ background-color: #2563eb; }}
-            .footer {{
-                margin-top: 24px;
-                padding-top: 16px;
-                border-top: 1px solid #e5e7eb;
-                font-size: 12px;
-                color: #6b7280;
-                text-align: center;
-            }}
-            .small-text {{ font-size: 13px; color: #4b5563; }}
-            ul {{ padding-left: 20px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="card">
-
-                <!-- Logo -->
-                <div style="text-align: center; margin-bottom: 16px;">
-                    <img src="cid:arcfox-logo" alt="ArcTecFox Logo" style="width: 120px; height: auto;" />
-                </div>
-
-                <p class="small-text">Hi {safe_name},</p>
-
-                <p class="small-text">
-                    <strong>Welcome to ArcTecFox!</strong><br/>
-                    Your preventive maintenance plan for <strong>{asset_name}</strong> is attached below.
-                </p>
-
-                <p class="small-text">
-                    This plan is tailored to help you improve reliability, reduce downtime,
-                    and optimize your maintenance scheduling.
-                </p>
-
-                <p class="small-text"><strong>Next steps:</strong></p>
-                <ul class="small-text">
-                    <li>Download and review your PM plan.</li>
-                    <li>Note any areas where you’d like revisions.</li>
-                    <li>Share it with your maintenance team.</li>
-                </ul>
-
-                <p class="small-text">
-                    Want to see how this integrates with your CMMS and existing workflows?
-                    You can schedule a 15-minute demo here:
-                </p>
-
-                <div style="text-align: center;">
-                    <a href="{demo_url}" class="cta-button">
-                        Book a 15-Minute Demo
-                    </a>
-                </div>
-
-                <p class="small-text">
-                    Your PM Plan is attached to this email as a PDF file.
-                </p>
-
-                <div class="footer">
-                    <p>Thanks for using ArcTecFox — your partner in AI-powered maintenance.</p>
-                    <p>&copy; {datetime.utcnow().year} ArcTecFox. All rights reserved.</p>
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    params = {
+        "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
+        "to": [email],
+        "subject": subject,
+        "template": {
+            "id": "arcfox-pm-plan-delivery",
+            "variables": {
+                "name": safe_name,
+                "asset_name": asset_name,
+                "demo_url": demo_url,
+                "year": datetime.utcnow().year,
+            },
+        },
+        "attachments": attachments,
+    }
 
     try:
-        # Read PDF file and encode as base64
-        with open(pdf_path, 'rb') as f:
-            pdf_content = f.read()
-
-        pdf_base64 = base64.b64encode(pdf_content).decode("utf-8")
-
-        # Build attachments: logo (inline) + PDF
-        attachments = []
-
-        if logo_b64:
-            attachments.append({
-                "filename": "ArcTecFox-logo.jpg",
-                "content": logo_b64,
-                "content_id": "arcfox-logo",
-                "content_type": "image/jpeg",
-            })
-
-        attachments.append({
-            "filename": f"PM_Plan_{asset_name.replace(' ', '_')}.pdf",
-            "content": pdf_base64,
-            "content_type": "application/pdf",
-        })
-
-        # Send email with PDF + logo attachment
-        response = resend.Emails.send({
-            "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
-            "to": [email],
-            "subject": subject,
-            "html": html_content,
-            "attachments": attachments,
-        })
-
+        response = resend.Emails.send(params)
         logger.info(f"✅ Delivery email sent to {email}: {response}")
-        return {"status": "sent", "email_id": response.get("id")}
+        email_id = response.get("id") if isinstance(response, dict) else None
+        return {"status": "sent", "email_id": email_id}
 
     except Exception as e:
         logger.error(f"❌ Error sending delivery email: {e}")
@@ -337,16 +190,17 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
 
 
 async def send_plan_generated_notification(email: str, full_name: str, company_name: str, asset_name: str):
-    """Send notification to support when a free PM plan email is confirmed"""
+    """
+    Internal notification to support when a free PM plan email is confirmed.
+    (Still using inline HTML; can be converted to a template later if you want.)
+    """
     import resend
 
-    # Check if RESEND_API_KEY is configured
     if not os.getenv("RESEND_API_KEY"):
         logger.warning("RESEND_API_KEY not configured, simulating support notification")
         print(f"Simulated support notification for: {email}")
         return {"status": "simulated"}
 
-    # Initialize Resend
     resend.api_key = os.getenv("RESEND_API_KEY")
 
     subject = f"New PM Plan Confirmed - {full_name} from {company_name}"
@@ -395,16 +249,16 @@ async def send_plan_generated_notification(email: str, full_name: str, company_n
     """
 
     try:
-        # Send email using Resend
         response = resend.Emails.send({
             "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
             "to": ["support@arctecfox.co"],
             "subject": subject,
-            "html": html_content
+            "html": html_content,
         })
 
         logger.info(f"✅ Plan confirmation notification sent to support: {response}")
-        return {"status": "sent", "email_id": response.get("id")}
+        email_id = response.get("id") if isinstance(response, dict) else None
+        return {"status": "sent", "email_id": email_id}
 
     except Exception as e:
         logger.error(f"❌ Error sending support notification: {e}")
