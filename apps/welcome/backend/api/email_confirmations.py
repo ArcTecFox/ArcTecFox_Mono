@@ -3,13 +3,58 @@ Email confirmation functions for free PM plan flow
 """
 import os
 import logging
+import base64
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
+def _load_logo_base64() -> Optional[str]:
+    """
+    Load the ArcTecFox logo from the frontend assets folder and return base64-encoded content.
+    Returns None if the file cannot be found/read.
+    """
+    try:
+        # email_confirmations.py is at:
+        # apps/welcome/backend/api/email_confirmations.py
+        # logo is at:
+        # apps/welcome/frontend/public/assets/ArcTecFox-logo.jpg
+        current_dir = os.path.dirname(__file__)
+        logo_path = os.path.abspath(
+            os.path.join(
+                current_dir,
+                "..",        # -> backend
+                "..",        # -> welcome
+                "frontend",
+                "public",
+                "assets",
+                "ArcTecFox-logo.jpg",
+            )
+        )
+
+        if not os.path.exists(logo_path):
+            logger.warning(f"Logo file not found at {logo_path}; emails will be sent without inline logo.")
+            return None
+
+        with open(logo_path, "rb") as f:
+            logo_bytes = f.read()
+
+        return base64.b64encode(logo_bytes).decode("utf-8")
+
+    except Exception as e:
+        logger.error(f"Error loading logo for email: {e}")
+        return None
+
+
 async def send_confirmation_email(email: str, full_name: str, token: str, asset_name: str):
-    """Send initial email confirmation request with link"""
+    """
+    Email #1 – Confirmation Email (Resend)
+
+    Hi [Name],
+    Your preventive maintenance plan is almost ready.
+    Confirm your email so we can deliver your free plan and welcome guide.
+    """
     import resend
 
     # Check if RESEND_API_KEY is configured
@@ -27,85 +72,74 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
     backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
     confirmation_link = f"{backend_url}/api/confirm-email/{token}"
 
-    subject = f"Confirm Your Email - Free PM Plan for {asset_name}"
+    subject = f"Confirm your email – your PM plan for {asset_name} is almost ready"
+
+    # Load logo as base64 (for inline CID image)
+    logo_b64 = _load_logo_base64()
+
+    # Shorter, funnel-focused copy
+    safe_name = full_name or "there"
 
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #3b82f6; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
-            .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #111827; margin: 0; padding: 0; background-color: #f3f4f6; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 24px; }}
+            .card {{ background-color: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; padding: 24px 24px 32px; }}
             .button {{
                 display: inline-block;
-                padding: 16px 32px;
+                padding: 14px 28px;
                 background-color: #3b82f6;
                 color: white !important;
                 text-decoration: none;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 16px;
+                border-radius: 999px;
+                font-weight: 600;
+                font-size: 15px;
                 margin: 20px 0;
             }}
             .button:hover {{ background-color: #2563eb; }}
             .footer {{
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid #ddd;
+                margin-top: 24px;
+                padding-top: 16px;
+                border-top: 1px solid #e5e7eb;
                 font-size: 12px;
-                color: #666;
+                color: #6b7280;
                 text-align: center;
             }}
-            .info-box {{
-                background: white;
-                padding: 20px;
-                margin: 20px 0;
-                border-left: 4px solid #3b82f6;
-            }}
-            .expiry-warning {{
-                background: #fef3c7;
-                padding: 15px;
-                border-radius: 5px;
-                margin: 15px 0;
-                border-left: 4px solid #f59e0b;
-            }}
+            .small-text {{ font-size: 13px; color: #4b5563; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1>Confirm Your Email Address</h1>
-            </div>
-            <div class="content">
-                <p>Hi {full_name},</p>
+            <div class="card">
 
-                <p>Thank you for generating a free Preventive Maintenance plan for <strong>{asset_name}</strong> with ArcTecFox PM Planner!</p>
-
-                <div class="info-box">
-                    <p><strong>One more step to get your PM plan:</strong></p>
-                    <p>Please confirm your email address by clicking the button below. Once confirmed, we'll immediately send you a detailed PDF with your custom PM plan.</p>
+                <!-- Logo -->
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <img src="cid:arcfox-logo" alt="ArcTecFox Logo" style="width: 120px; height: auto;" />
                 </div>
+
+                <p class="small-text">Hi {safe_name},</p>
+
+                <p class="small-text">
+                    Your preventive maintenance plan for <strong>{asset_name}</strong> is almost ready.
+                    Confirm your email so we can deliver your free plan and welcome guide.
+                </p>
 
                 <div style="text-align: center;">
-                    <a href="{confirmation_link}" class="button">Confirm Email & Get Your PM Plan</a>
+                    <a href="{confirmation_link}" class="button">
+                        Confirm My Email
+                    </a>
                 </div>
 
-                <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                <p class="small-text" style="margin-top: 16px;">
                     Or copy and paste this link into your browser:<br>
                     <a href="{confirmation_link}" style="color: #3b82f6; word-break: break-all;">{confirmation_link}</a>
                 </p>
 
-                <div class="expiry-warning">
-                    <strong>⏰ Important:</strong> This confirmation link expires in 24 hours for security purposes.
-                </div>
-
                 <div class="footer">
-                    <p><strong>Why confirm your email?</strong></p>
-                    <p>We require email confirmation to prevent spam and ensure you receive your PM plan safely.</p>
-                    <p style="margin-top: 20px;">This is an automated email from ArcTecFox PM Planner.</p>
-                    <p>&copy; 2024 ArcTecFox. All rights reserved.</p>
+                    <p>&copy; {datetime.utcnow().year} ArcTecFox. All rights reserved.</p>
                 </div>
             </div>
         </div>
@@ -114,13 +148,27 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
     """
 
     try:
+        # Build attachments list (logo as inline image if available)
+        attachments = []
+        if logo_b64:
+            attachments.append({
+                "filename": "ArcTecFox-logo.jpg",
+                "content": logo_b64,          # base64-encoded content
+                "content_id": "arcfox-logo",  # must match src="cid:arcfox-logo"
+                "content_type": "image/jpeg",
+            })
+
         # Send email using Resend
-        response = resend.Emails.send({
+        params = {
             "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
             "to": [email],
             "subject": subject,
-            "html": html_content
-        })
+            "html": html_content,
+        }
+        if attachments:
+            params["attachments"] = attachments
+
+        response = resend.Emails.send(params)
 
         logger.info(f"✅ Confirmation email sent to {email}: {response}")
         return {"status": "sent", "email_id": response.get("id")}
@@ -131,9 +179,17 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
 
 
 async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_name: str):
-    """Send PM plan PDF after email confirmation"""
+    """
+    Email #2 – PM Plan Delivery
+
+    Hi [Name or Company],
+
+    Welcome to ArcTecFox!
+    Your preventive maintenance plan for [Asset Name] is attached below.
+
+    This plan is tailored to help you improve reliability, reduce downtime, and optimize maintenance scheduling.
+    """
     import resend
-    import base64
 
     # Check if RESEND_API_KEY is configured
     if not os.getenv("RESEND_API_KEY"):
@@ -145,96 +201,93 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
     # Initialize Resend
     resend.api_key = os.getenv("RESEND_API_KEY")
 
-    # Get frontend URL
+    # Get frontend URL & optional demo URL
     frontend_url = os.getenv("FRONTEND_URL", "https://arctecfox-mono.vercel.app")
+    demo_url = os.getenv("DEMO_URL", f"{frontend_url}/demo")
 
-    subject = f"Your PM Plan for {asset_name} - ArcTecFox"
+    subject = f"Your preventive maintenance plan for {asset_name} is ready"
+
+    # Load logo as base64 (for inline CID image)
+    logo_b64 = _load_logo_base64()
+    safe_name = full_name or "there"
 
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #3b82f6; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
-            .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }}
-            .success-icon {{ font-size: 48px; text-align: center; margin: 20px 0; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #111827; margin: 0; padding: 0; background-color: #f3f4f6; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 24px; }}
+            .card {{ background-color: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; padding: 24px 24px 32px; }}
             .cta-button {{
                 display: inline-block;
-                padding: 16px 32px;
+                padding: 14px 28px;
                 background-color: #3b82f6;
                 color: white !important;
                 text-decoration: none;
-                border-radius: 5px;
-                font-weight: bold;
-                margin: 20px 0;
+                border-radius: 999px;
+                font-weight: 600;
+                margin: 16px 0;
             }}
-            .info-box {{
-                background: white;
-                padding: 20px;
-                margin: 20px 0;
-                border-left: 4px solid #22c55e;
-            }}
+            .cta-button:hover {{ background-color: #2563eb; }}
             .footer {{
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid #ddd;
+                margin-top: 24px;
+                padding-top: 16px;
+                border-top: 1px solid #e5e7eb;
                 font-size: 12px;
-                color: #666;
+                color: #6b7280;
                 text-align: center;
             }}
+            .small-text {{ font-size: 13px; color: #4b5563; }}
+            ul {{ padding-left: 20px; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1>Your PM Plan is Ready!</h1>
-            </div>
-            <div class="content">
-                <div class="success-icon">✅</div>
+            <div class="card">
 
-                <p>Hi {full_name},</p>
-
-                <p>Great news! Your email has been confirmed and your custom Preventive Maintenance plan for <strong>{asset_name}</strong> is attached to this email.</p>
-
-                <div class="info-box">
-                    <h3>What's Included:</h3>
-                    <ul>
-                        <li>12 comprehensive maintenance tasks</li>
-                        <li>Detailed step-by-step instructions</li>
-                        <li>Recommended intervals and schedules</li>
-                        <li>Safety precautions and best practices</li>
-                        <li>Tools and consumables needed</li>
-                        <li>Engineering rationale for each task</li>
-                    </ul>
+                <!-- Logo -->
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <img src="cid:arcfox-logo" alt="ArcTecFox Logo" style="width: 120px; height: auto;" />
                 </div>
 
-                <h3>Next Steps:</h3>
-                <ol>
-                    <li>Download and review the attached PDF</li>
-                    <li>Share with your maintenance team</li>
-                    <li>Implement the recommended schedule</li>
-                </ol>
+                <p class="small-text">Hi {safe_name},</p>
 
-                <div style="background: #ecfdf5; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #22c55e;">
-                    <p><strong>Want to do more with ArcTecFox?</strong></p>
-                    <p>Upgrade to our full platform to:</p>
-                    <ul>
-                        <li>Track task completion and schedules</li>
-                        <li>Manage multiple assets and sites</li>
-                        <li>Assign tasks to technicians</li>
-                        <li>Get automated reminders and notifications</li>
-                        <li>Generate compliance reports</li>
-                    </ul>
-                    <div style="text-align: center; margin-top: 15px;">
-                        <a href="{frontend_url}/pricing" class="cta-button">Explore Plans</a>
-                    </div>
+                <p class="small-text">
+                    <strong>Welcome to ArcTecFox!</strong><br/>
+                    Your preventive maintenance plan for <strong>{asset_name}</strong> is attached below.
+                </p>
+
+                <p class="small-text">
+                    This plan is tailored to help you improve reliability, reduce downtime,
+                    and optimize your maintenance scheduling.
+                </p>
+
+                <p class="small-text"><strong>Next steps:</strong></p>
+                <ul class="small-text">
+                    <li>Download and review your PM plan.</li>
+                    <li>Note any areas where you’d like revisions.</li>
+                    <li>Share it with your maintenance team.</li>
+                </ul>
+
+                <p class="small-text">
+                    Want to see how this integrates with your CMMS and existing workflows?
+                    You can schedule a 15-minute demo here:
+                </p>
+
+                <div style="text-align: center;">
+                    <a href="{demo_url}" class="cta-button">
+                        Book a 15-Minute Demo
+                    </a>
                 </div>
+
+                <p class="small-text">
+                    Your PM Plan is attached to this email as a PDF file.
+                </p>
 
                 <div class="footer">
-                    <p>Questions? Contact us at support@arctecfox.co</p>
-                    <p style="margin-top: 20px;">&copy; 2024 ArcTecFox. All rights reserved.</p>
+                    <p>Thanks for using ArcTecFox — your partner in AI-powered maintenance.</p>
+                    <p>&copy; {datetime.utcnow().year} ArcTecFox. All rights reserved.</p>
                 </div>
             </div>
         </div>
@@ -247,18 +300,32 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
         with open(pdf_path, 'rb') as f:
             pdf_content = f.read()
 
-        pdf_base64 = base64.b64encode(pdf_content).decode()
+        pdf_base64 = base64.b64encode(pdf_content).decode("utf-8")
 
-        # Send email with PDF attachment
+        # Build attachments: logo (inline) + PDF
+        attachments = []
+
+        if logo_b64:
+            attachments.append({
+                "filename": "ArcTecFox-logo.jpg",
+                "content": logo_b64,
+                "content_id": "arcfox-logo",
+                "content_type": "image/jpeg",
+            })
+
+        attachments.append({
+            "filename": f"PM_Plan_{asset_name.replace(' ', '_')}.pdf",
+            "content": pdf_base64,
+            "content_type": "application/pdf",
+        })
+
+        # Send email with PDF + logo attachment
         response = resend.Emails.send({
             "from": "ArcTecFox PM Planner <notifications@arctecfox.ai>",
             "to": [email],
             "subject": subject,
             "html": html_content,
-            "attachments": [{
-                "filename": f"PM_Plan_{asset_name.replace(' ', '_')}.pdf",
-                "content": pdf_base64
-            }]
+            "attachments": attachments,
         })
 
         logger.info(f"✅ Delivery email sent to {email}: {response}")
@@ -319,7 +386,7 @@ async def send_plan_generated_notification(email: str, full_name: str, company_n
                 <div class="footer">
                     <p>This is an automated notification from ArcTecFox PM Planner.</p>
                     <p>Please do not reply to this email.</p>
-                    <p>&copy; 2024 ArcTecFox. All rights reserved.</p>
+                    <p>&copy; {datetime.utcnow().year} ArcTecFox. All rights reserved.</p>
                 </div>
             </div>
         </div>
