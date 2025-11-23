@@ -527,9 +527,9 @@ async def export_pdf(
 class LeadCaptureRequest(BaseModel):
     planData: PlanData
     email: str
-    company: str
-    fullName: Optional[str] = None
-    requestAccess: bool = False
+    company: Optional[str] = None
+    fullName: str
+    requestAccess: bool = True
 
 class LeadCaptureResponse(BaseModel):
     success: bool
@@ -727,29 +727,28 @@ Return the response as a JSON array with all fields populated.
             tasks_result = service_client.table("pm_tasks").insert(tasks_payload).execute()
             logger.info(f"✅ Saved {len(tasks_payload)} PM tasks")
         
-        # Step 5: Create access request if requested (but don't send notification yet)
-        if lead_request.requestAccess and lead_request.fullName:
-            try:
-                logger.info(f"📧 Processing access request for {lead_request.email}")
+        # Step 5: Create access request for all free PM plan generations (notification sent after email confirmation)
+        try:
+            logger.info(f"📧 Processing access request for {lead_request.email}")
 
-                # Check if email already has a pending request
-                existing_request = service_client.table("access_requests").select("*").eq("email", lead_request.email).eq("status", "pending").execute()
+            # Check if email already has a pending request
+            existing_request = service_client.table("access_requests").select("*").eq("email", lead_request.email).eq("status", "pending").execute()
 
-                if not existing_request.data:
-                    access_request_data = {
-                        "email": lead_request.email,
-                        "full_name": lead_request.fullName,
-                        "lead_id": lead_data['id'],
-                        "status": "pending"
-                    }
+            if not existing_request.data:
+                access_request_data = {
+                    "email": lead_request.email,
+                    "full_name": lead_request.fullName,
+                    "lead_id": lead_data['id'],
+                    "status": "pending"
+                }
 
-                    access_result = service_client.table("access_requests").insert(access_request_data).execute()
-                    logger.info(f"✅ Created access request record for {lead_request.email} (notification will be sent after email confirmation)")
-                else:
-                    logger.info(f"⚠️ Access request already exists for {lead_request.email}")
-            except Exception as e:
-                logger.error(f"❌ Failed to create access request: {e}")
-                # Don't fail the whole process if access request fails
+                access_result = service_client.table("access_requests").insert(access_request_data).execute()
+                logger.info(f"✅ Created access request record for {lead_request.email} (notification will be sent after email confirmation)")
+            else:
+                logger.info(f"⚠️ Access request already exists for {lead_request.email}")
+        except Exception as e:
+            logger.error(f"❌ Failed to create access request: {e}")
+            # Don't fail the whole process if access request fails
 
         # Step 6: Send confirmation email
         try:

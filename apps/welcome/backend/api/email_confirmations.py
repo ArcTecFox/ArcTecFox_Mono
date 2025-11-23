@@ -36,12 +36,12 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #f97316; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
+            .header {{ background-color: #3b82f6; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
             .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }}
             .button {{
                 display: inline-block;
                 padding: 16px 32px;
-                background-color: #f97316;
+                background-color: #3b82f6;
                 color: white !important;
                 text-decoration: none;
                 border-radius: 5px;
@@ -49,7 +49,7 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
                 font-size: 16px;
                 margin: 20px 0;
             }}
-            .button:hover {{ background-color: #ea580c; }}
+            .button:hover {{ background-color: #2563eb; }}
             .footer {{
                 margin-top: 30px;
                 padding-top: 20px;
@@ -62,7 +62,7 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
                 background: white;
                 padding: 20px;
                 margin: 20px 0;
-                border-left: 4px solid #f97316;
+                border-left: 4px solid #3b82f6;
             }}
             .expiry-warning {{
                 background: #fef3c7;
@@ -94,7 +94,7 @@ async def send_confirmation_email(email: str, full_name: str, token: str, asset_
 
                 <p style="margin-top: 20px; font-size: 14px; color: #666;">
                     Or copy and paste this link into your browser:<br>
-                    <a href="{confirmation_link}" style="color: #f97316; word-break: break-all;">{confirmation_link}</a>
+                    <a href="{confirmation_link}" style="color: #3b82f6; word-break: break-all;">{confirmation_link}</a>
                 </p>
 
                 <div class="expiry-warning">
@@ -157,13 +157,13 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #f97316; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
+            .header {{ background-color: #3b82f6; color: white; padding: 30px; text-align: center; border-radius: 5px 5px 0 0; }}
             .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }}
             .success-icon {{ font-size: 48px; text-align: center; margin: 20px 0; }}
             .cta-button {{
                 display: inline-block;
                 padding: 16px 32px;
-                background-color: #f97316;
+                background-color: #3b82f6;
                 color: white !important;
                 text-decoration: none;
                 border-radius: 5px;
@@ -174,7 +174,7 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
                 background: white;
                 padding: 20px;
                 margin: 20px 0;
-                border-left: 4px solid #10b981;
+                border-left: 4px solid #22c55e;
             }}
             .footer {{
                 margin-top: 30px;
@@ -217,7 +217,7 @@ async def send_delivery_email(email: str, full_name: str, pdf_path: str, asset_n
                     <li>Implement the recommended schedule</li>
                 </ol>
 
-                <div style="background: #ecfdf5; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #10b981;">
+                <div style="background: #ecfdf5; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #22c55e;">
                     <p><strong>Want to do more with ArcTecFox?</strong></p>
                     <p>Upgrade to our full platform to:</p>
                     <ul>
@@ -291,9 +291,9 @@ async def send_plan_generated_notification(email: str, full_name: str, company_n
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #f97316; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+            .header {{ background-color: #3b82f6; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
             .content {{ background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }}
-            .info-box {{ margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #10b981; }}
+            .info-box {{ margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #22c55e; }}
             .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
         </style>
     </head>

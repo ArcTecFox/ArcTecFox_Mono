@@ -1850,43 +1850,210 @@ export const addExistingUserToSite = async (email, siteId, roleId = null, canEdi
   }
 };
 
-// Search for existing users within the same company that can be added to a site
-export const searchCompanyUsers = async (siteId, searchTerm = '') => {
+// NEW FUNCTION 1: Get companies accessible to an admin
+export const fetchCompaniesByAdmin = async (userId) => {
   try {
-    console.log('🔍 Searching company users for site:', siteId, 'term:', searchTerm);
+    console.log('🏢 Fetching companies accessible to admin:', userId);
 
-    // Step 1: Get site and company info separately
-    const { data: siteData, error: siteError } = await supabase
-      .from('sites')
-      .select('company_id')
-      .eq('id', siteId)
-      .single();
+    // Step 1: Get all site_users entries for this user
+    const { data: siteUsersData, error: siteUsersError } = await supabase
+      .from('site_users')
+      .select('site_id,role_id')
+      .eq('user_id', userId);
 
-    if (siteError) {
-      console.error("❌ Site query error:", {
-        message: siteError.message,
-        details: siteError.details,
-        hint: siteError.hint,
-        code: siteError.code
-      });
-      throw siteError;
+    if (siteUsersError) throw siteUsersError;
+
+    if (!siteUsersData || siteUsersData.length === 0) {
+      console.log('No site_users entries found for user');
+      return [];
     }
 
-    if (!siteData) throw new Error('Site not found');
+    // Step 2: Get role details for those entries
+    const roleIds = [...new Set(siteUsersData.map(su => su.role_id).filter(Boolean))];
+    const { data: rolesData, error: rolesError } = await supabase
+      .from('roles')
+      .select('id,name')
+      .in('id', roleIds);
 
-    const companyId = siteData.company_id;
-    console.log('✅ Found company ID:', companyId);
+    if (rolesError) throw rolesError;
 
-    // Step 2: Get company name separately
-    const { data: companyData, error: companyError } = await supabase
+    // Step 3: Check if user has super_admin role
+    const isSuperAdmin = rolesData?.some(role => role.name === 'super_admin');
+
+    if (isSuperAdmin) {
+      // Super admin sees ALL companies
+      console.log('User is super_admin - fetching all companies');
+      const { data: allCompanies, error: companiesError } = await supabase
+        .from('companies')
+        .select('id,name')
+        .order('name');
+
+      if (companiesError) throw companiesError;
+      return allCompanies || [];
+    }
+
+    // Step 4: For company_admin, get unique company_ids from their sites
+    const isCompanyAdmin = rolesData?.some(role => role.name === 'company_admin');
+
+    if (!isCompanyAdmin) {
+      console.log('User is neither super_admin nor company_admin');
+      return [];
+    }
+
+    // Get sites for this user
+    const siteIds = siteUsersData.map(su => su.site_id);
+    const { data: sitesData, error: sitesError } = await supabase
+      .from('sites')
+      .select('company_id')
+      .in('id', siteIds);
+
+    if (sitesError) throw sitesError;
+
+    // Get unique company IDs
+    const companyIds = [...new Set(sitesData?.map(s => s.company_id).filter(Boolean))];
+
+    if (companyIds.length === 0) {
+      return [];
+    }
+
+    // Fetch company details for those IDs
+    const { data: companiesData, error: companiesError } = await supabase
       .from('companies')
-      .select('name')
-      .eq('id', companyId)
-      .single();
+      .select('id,name')
+      .in('id', companyIds)
+      .order('name');
 
-    const companyName = companyData?.name || 'Unknown Company';
+    if (companiesError) throw companiesError;
 
-    // Step 3: Get all users already in this site (to exclude them)
+    console.log('✅ Companies fetched for company_admin:', companiesData);
+    return companiesData || [];
+
+  } catch (error) {
+    console.error('❌ Error fetching companies by admin:', error);
+    throw error;
+  }
+};
+
+// NEW FUNCTION 2: Get all users assigned to a company
+export const fetchCompanyUsers = async (companyId) => {
+  try {
+    console.log('👥 Fetching all users for company:', companyId);
+
+    // Step 1: Get users from company_users table (if it exists)
+    let companyUserIds = [];
+    try {
+      const { data: companyUsersData, error: companyUsersError } = await supabase
+        .from('company_users')
+        .select('user_id')
+        .eq('company_id', companyId);
+
+      if (!companyUsersError && companyUsersData) {
+        companyUserIds = companyUsersData.map(cu => cu.user_id);
+      }
+    } catch (err) {
+      console.log('company_users table may not exist or has errors:', err);
+    }
+
+    // Step 2: Get users from site_users table via sites
+    const { data: sitesData, error: sitesError } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('company_id', companyId);
+
+    if (sitesError) throw sitesError;
+
+    let siteUserIds = [];
+    if (sitesData && sitesData.length > 0) {
+      const siteIds = sitesData.map(s => s.id);
+      const { data: siteUsersData, error: siteUsersError } = await supabase
+        .from('site_users')
+        .select('user_id')
+        .in('site_id', siteIds);
+
+      if (siteUsersError) throw siteUsersError;
+
+      if (siteUsersData) {
+        siteUserIds = siteUsersData.map(su => su.user_id);
+      }
+    }
+
+    // Step 3: Combine and deduplicate user IDs
+    const allUserIds = [...new Set([...companyUserIds, ...siteUserIds])];
+
+    if (allUserIds.length === 0) {
+      return [];
+    }
+
+    // Step 4: Fetch user details
+    const { data: usersData, error: usersError } = await supabase
+      .from('users')
+      .select('id,email,full_name')
+      .in('id', allUserIds);
+
+    if (usersError) throw usersError;
+
+    console.log('✅ Company users fetched:', usersData?.length || 0);
+    return usersData || [];
+
+  } catch (error) {
+    console.error('❌ Error fetching company users:', error);
+    throw error;
+  }
+};
+
+// MODIFIED FUNCTION 3: Search for existing users within the same company that can be added to a site
+export const searchCompanyUsers = async (siteId, companyId, searchTerm = '') => {
+  try {
+    console.log('🔍 Searching company users for site:', siteId, 'company:', companyId, 'term:', searchTerm);
+
+    // Step 1: Get all users in the company
+    const companyUsers = await fetchCompanyUsers(companyId);
+    console.log('✅ Company users found:', companyUsers.length);
+
+    // Step 2: Get newly authenticated users (not in any company_users or site_users)
+    let unassignedUsers = [];
+    try {
+      // Get all user IDs that are in company_users
+      const { data: allCompanyUsers, error: companyUsersError } = await supabase
+        .from('company_users')
+        .select('user_id');
+
+      const companyUserIds = new Set((allCompanyUsers || []).map(cu => cu.user_id));
+
+      // Get all user IDs that are in site_users
+      const { data: allSiteUsers, error: siteUsersError } = await supabase
+        .from('site_users')
+        .select('user_id');
+
+      const siteUserIds = new Set((allSiteUsers || []).map(su => su.user_id));
+
+      // Combine both sets
+      const assignedUserIds = new Set([...companyUserIds, ...siteUserIds]);
+
+      // Get all users from users table
+      const { data: allUsers, error: allUsersError } = await supabase
+        .from('users')
+        .select('id,email,full_name');
+
+      if (allUsersError) throw allUsersError;
+
+      // Filter to get only unassigned users
+      unassignedUsers = (allUsers || []).filter(user => !assignedUserIds.has(user.id));
+      console.log('✅ Unassigned users found:', unassignedUsers.length);
+    } catch (err) {
+      console.log('⚠️ Error fetching unassigned users:', err);
+      // Continue without unassigned users if there's an error
+    }
+
+    // Step 3: Combine company users and unassigned users (deduplicate by id)
+    const userMap = new Map();
+    [...companyUsers, ...unassignedUsers].forEach(user => {
+      userMap.set(user.id, user);
+    });
+    const allAvailableUsers = Array.from(userMap.values());
+    console.log('✅ Total available users (company + unassigned):', allAvailableUsers.length);
+
+    // Step 4: Get all users already in this site (to exclude them)
     const { data: existingSiteUsers, error: existingError } = await supabase
       .from('site_users')
       .select('user_id')
@@ -1900,47 +2067,10 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
     const existingUserIds = new Set(
       (existingSiteUsers || []).map(su => su.user_id)
     );
-    console.log('✅ Found existing user IDs to exclude:', existingUserIds);
+    console.log('✅ Existing site user IDs to exclude:', existingUserIds.size);
 
-    // Step 4: Get all site_users for this company
-    const { data: companySiteUsers, error: companySiteUsersError } = await supabase
-      .from('site_users')
-      .select('user_id, sites!inner(company_id)')
-      .eq('sites.company_id', companyId);
-
-    if (companySiteUsersError) {
-      console.error("❌ Company site users query error:", companySiteUsersError);
-      throw companySiteUsersError;
-    }
-
-    // Get unique user IDs from company (excluding current site users)
-    const companyUserIds = [...new Set(
-      (companySiteUsers || [])
-        .map(item => item.user_id)
-        .filter(userId => !existingUserIds.has(userId))
-    )];
-
-    console.log('✅ Found company user IDs:', companyUserIds);
-
-    if (companyUserIds.length === 0) {
-      return {
-        users: [],
-        companyName
-      };
-    }
-
-    // Step 5: Get user details for company users
-    const { data: usersData, error: usersError } = await supabase
-      .from('users')
-      .select('id, email, full_name')
-      .in('id', companyUserIds);
-
-    if (usersError) {
-      console.error("❌ Users details query error:", usersError);
-      throw usersError;
-    }
-
-    let filteredUsers = usersData || [];
+    // Step 5: Filter out users already in current site
+    let filteredUsers = allAvailableUsers.filter(user => !existingUserIds.has(user.id));
 
     // Step 6: Apply search filter if provided
     if (searchTerm && searchTerm.length >= 2) {
@@ -1955,7 +2085,7 @@ export const searchCompanyUsers = async (siteId, searchTerm = '') => {
 
     return {
       users: filteredUsers.slice(0, 20), // Limit to 20 results
-      companyName
+      companyName: '' // We don't need this anymore since we have company dropdown
     };
 
   } catch (error) {
@@ -2120,7 +2250,7 @@ export const fetchUserCompanies = async (userId) => {
 };
 
 // DEPRECATED: Use fetchSiteUsers instead
-export const fetchCompanyUsers = async (siteId) => {
+export const fetchCompanyUsers_DEPRECATED = async (siteId) => {
   return await fetchSiteUsers(siteId);
 };
 

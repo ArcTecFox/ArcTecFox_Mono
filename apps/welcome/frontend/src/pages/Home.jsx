@@ -89,7 +89,7 @@ export default function Home() {
 
       setShowLeadModal(false);
       setShowLoadingModal(true);
-      
+
       // Simulate loading progression
       const progressSteps = [
         { status: 'analyzing', progress: 25, delay: 800 },
@@ -97,7 +97,7 @@ export default function Home() {
         { status: 'creating', progress: 75, delay: 1000 },
         { status: 'saving', progress: 90, delay: 500 }
       ];
-      
+
       for (const step of progressSteps) {
         setLoadingStatus(step.status);
         setLoadingProgress(step.progress);
@@ -112,7 +112,7 @@ export default function Home() {
         fullName,
         requestAccess
       });
-      
+
       setLoadingProgress(100);
       await new Promise(resolve => setTimeout(resolve, 300));
       setShowLoadingModal(false);
@@ -189,7 +189,7 @@ export default function Home() {
           <div className="max-w-5xl mx-auto px-4">
             <h2 className="text-2xl sm:text-3xl font-bold mb-3">Continuous PM Optimization</h2>
             <p className="text-gray-700 mb-6">
-              A preventive maintenance plan is not a one-time document. It’s a structured, evolving program aligned to your assets under management.
+              A preventive maintenance plan is not a one-time document. It's a structured, evolving program aligned to your assets under management.
             </p>
             <div className="grid sm:grid-cols-3 gap-6 text-left">
               <div>
@@ -238,10 +238,10 @@ export default function Home() {
           <h2 className="text-2xl sm:text-3xl font-bold mb-6">Free Preventive Maintenance Plan Generator</h2>
 
           {emailSent ? (
-            /* Success Message */
-            <div className="bg-white border-2 border-green-500 rounded-lg p-12 text-center shadow-lg">
+            /* Success Message - Blue Primary Theme */
+            <div className="bg-white border-2 border-blue-500 rounded-lg p-12 text-center shadow-lg">
               <div className="mb-6">
-                <svg className="w-20 h-20 text-green-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-20 h-20 text-blue-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" />
                 </svg>
               </div>
@@ -277,7 +277,7 @@ export default function Home() {
                   setEmailSent(false);
                   setSubmittedEmail("");
                 }}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow"
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow transition-colors"
               >
                 <span>⚡</span> Generate Another Plan
               </button>
@@ -354,7 +354,7 @@ export default function Home() {
                     acceptedAnswer: {
                       "@type": "Answer",
                       text:
-                        "ArcTecFox’s branded process to keep PM effective over time: quarterly reviews, lifecycle-aligned updates, and data-driven revisions.",
+                        "ArcTecFox's branded process to keep PM effective over time: quarterly reviews, lifecycle-aligned updates, and data-driven revisions.",
                     },
                   },
                   {
@@ -380,7 +380,7 @@ export default function Home() {
                 step: [
                   { "@type": "HowToStep", name: "Choose asset type", text: "Select the equipment (HVAC, compressor, CNC, chiller, etc.)." },
                   { "@type": "HowToStep", name: "Enter usage & conditions", text: "Provide hours, environment, and criticality." },
-                  { "@type": "HowToStep", name: "Generate schedule", text: "Click “Generate My Free PM Plan” to create a CMMS-ready schedule." },
+                  { "@type": "HowToStep", name: "Generate schedule", text: "Click 'Generate My Free PM Plan' to create a CMMS-ready schedule." },
                   { "@type": "HowToStep", name: "Export", text: "Download Excel/CSV and import into your CMMS." }
                 ],
               }),
